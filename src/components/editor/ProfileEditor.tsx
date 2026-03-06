@@ -49,6 +49,11 @@ export default function ProfileEditor({ profileId }: Props) {
     onError: (e) => toast.error(`激活失败: ${e}`),
   })
 
+  const handleActivate = async () => {
+    await save.mutateAsync()
+    activate.mutate()
+  }
+
   if (isLoading) return <div className="p-6 text-muted-foreground text-sm">加载中...</div>
 
   return (
@@ -62,7 +67,7 @@ export default function ProfileEditor({ profileId }: Props) {
           {!currentProfile?.is_active && (
             <Button
               size="sm"
-              onClick={() => { save.mutate(); activate.mutate() }}
+              onClick={handleActivate}
               disabled={save.isPending || activate.isPending}
             >
               激活 ▶
