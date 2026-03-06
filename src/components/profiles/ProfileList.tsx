@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import { Button } from "../ui/button"
 import {
@@ -20,6 +20,7 @@ export default function ProfileList({ selectedId, onSelect }: Props) {
   const renameProfile = useRenameProfile()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState("")
+  const cancelEditRef = useRef(false)
 
   if (isLoading) return <div className="p-4 text-sm text-muted-foreground">加载中...</div>
 
@@ -47,12 +48,18 @@ export default function ProfileList({ selectedId, onSelect }: Props) {
                 value={editName}
                 onChange={e => setEditName(e.target.value)}
                 onBlur={() => {
-                  if (editName.trim()) renameProfile.mutate({ id: p.id, name: editName.trim() })
+                  if (!cancelEditRef.current && editName.trim()) {
+                    renameProfile.mutate({ id: p.id, name: editName.trim() })
+                  }
+                  cancelEditRef.current = false
                   setEditingId(null)
                 }}
                 onKeyDown={e => {
                   if (e.key === "Enter") (e.target as HTMLInputElement).blur()
-                  if (e.key === "Escape") setEditingId(null)
+                  if (e.key === "Escape") {
+                    cancelEditRef.current = true
+                    ;(e.target as HTMLInputElement).blur()
+                  }
                 }}
                 onClick={e => e.stopPropagation()}
               />
