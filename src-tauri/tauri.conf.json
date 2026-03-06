@@ -13,12 +13,14 @@
     "windows": [
       {
         "title": "OpenclawSwitch",
-        "width": 800,
-        "height": 600
+        "width": 1024,
+        "height": 720,
+        "minWidth": 800,
+        "minHeight": 600
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
     }
   },
   "bundle": {
