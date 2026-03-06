@@ -22,7 +22,8 @@ pub fn read_config(path: &Path) -> Result<Value, ConfigError> {
 /// Write JSON value to path atomically (tmp file + rename)
 pub fn write_config(path: &Path, value: &Value) -> Result<(), ConfigError> {
     let json = serde_json::to_string_pretty(value)?;
-    let tmp_path = path.with_extension("tmp");
+    let tmp_name = format!(".openclaw_{}.tmp", uuid::Uuid::new_v4());
+    let tmp_path = path.with_file_name(tmp_name);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -32,9 +33,8 @@ pub fn write_config(path: &Path, value: &Value) -> Result<(), ConfigError> {
 }
 
 /// Get the default openclaw config path: ~/.openclaw/openclaw.json
-pub fn default_openclaw_path() -> PathBuf {
-    let home = dirs::home_dir().unwrap_or_default();
-    home.join(".openclaw").join("openclaw.json")
+pub fn default_openclaw_path() -> Option<PathBuf> {
+    dirs::home_dir().map(|h| h.join(".openclaw").join("openclaw.json"))
 }
 
 #[cfg(test)]
@@ -68,6 +68,12 @@ mod tests {
         write_config(&path, &val).unwrap();
         let readback = read_config(&path).unwrap();
         assert_eq!(readback["test"], "value");
+        // No tmp file left after successful write
+        let tmp_files: Vec<_> = std::fs::read_dir(dir.path()).unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map_or(false, |ext| ext == "tmp"))
+            .collect();
+        assert!(tmp_files.is_empty(), "tmp file was not cleaned up");
     }
 
     #[test]
