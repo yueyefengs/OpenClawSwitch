@@ -54,15 +54,19 @@ pub fn create_profile(
 ) -> Result<Profile, ProfileError> {
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
-    conn.execute(
+    let config_json = serde_json::to_string(&config)?;
+
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
         "INSERT INTO profiles (id, name, description, is_active, created_at, updated_at) VALUES (?1, ?2, ?3, 0, ?4, ?5)",
         params![id, name, description, now, now],
     )?;
-    let config_json = serde_json::to_string(&config)?;
-    conn.execute(
+    tx.execute(
         "INSERT INTO profile_configs (profile_id, config_json) VALUES (?1, ?2)",
         params![id, config_json],
     )?;
+    tx.commit()?;
+
     Ok(Profile {
         id,
         name: name.to_string(),
@@ -80,14 +84,17 @@ pub fn update_profile_config(
 ) -> Result<(), ProfileError> {
     let config_json = serde_json::to_string(&config)?;
     let now = Utc::now().to_rfc3339();
-    let changed = conn.execute(
+
+    let tx = conn.unchecked_transaction()?;
+    let changed = tx.execute(
         "UPDATE profile_configs SET config_json = ?1 WHERE profile_id = ?2",
         params![config_json, id],
     )?;
     if changed == 0 {
         return Err(ProfileError::NotFound(id.to_string()));
     }
-    conn.execute("UPDATE profiles SET updated_at = ?1 WHERE id = ?2", params![now, id])?;
+    tx.execute("UPDATE profiles SET updated_at = ?1 WHERE id = ?2", params![now, id])?;
+    tx.commit()?;
     Ok(())
 }
 
@@ -106,7 +113,10 @@ pub fn rename_profile(conn: &Connection, id: &str, name: &str) -> Result<(), Pro
 pub fn delete_profile(conn: &Connection, id: &str) -> Result<(), ProfileError> {
     let is_active: i64 = conn.query_row(
         "SELECT is_active FROM profiles WHERE id = ?1", params![id], |r| r.get(0)
-    ).map_err(|_| ProfileError::NotFound(id.to_string()))?;
+    ).map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => ProfileError::NotFound(id.to_string()),
+        other => ProfileError::Db(other),
+    })?;
     if is_active != 0 {
         return Err(ProfileError::ActiveProfile);
     }
@@ -124,13 +134,24 @@ pub fn activate_profile(
         "SELECT config_json FROM profile_configs WHERE profile_id = ?1",
         params![id],
         |r| r.get(0),
-    ).map_err(|_| ProfileError::NotFound(id.to_string()))?;
+    ).map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => ProfileError::NotFound(id.to_string()),
+        other => ProfileError::Db(other),
+    })?;
 
     let config: Value = serde_json::from_str(&config_json)?;
+
+    // Write file first (best-effort; DB is the source of truth for active state)
     super::config_parser::write_config(live_path, &config)?;
 
-    conn.execute("UPDATE profiles SET is_active = 0", [])?;
-    conn.execute("UPDATE profiles SET is_active = 1 WHERE id = ?1", params![id])?;
+    // Atomically update all active flags in a single statement
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "UPDATE profiles SET is_active = CASE WHEN id = ?1 THEN 1 ELSE 0 END",
+        params![id],
+    )?;
+    tx.commit()?;
+
     Ok(())
 }
 
@@ -139,7 +160,10 @@ pub fn get_profile_config(conn: &Connection, id: &str) -> Result<Value, ProfileE
         "SELECT config_json FROM profile_configs WHERE profile_id = ?1",
         params![id],
         |r| r.get(0),
-    ).map_err(|_| ProfileError::NotFound(id.to_string()))?;
+    ).map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => ProfileError::NotFound(id.to_string()),
+        other => ProfileError::Db(other),
+    })?;
     Ok(serde_json::from_str(&config_json)?)
 }
 
