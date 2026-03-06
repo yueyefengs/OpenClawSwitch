@@ -11,6 +11,64 @@ pub struct AppState {
     pub live_config_path: PathBuf,
 }
 
+fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::Manager;
+    use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+    use tauri::tray::TrayIconBuilder;
+
+    let state = app.state::<AppState>();
+    let profiles = {
+        let db = state.db.lock().unwrap();
+        services::profile::list_profiles(&db.conn).unwrap_or_default()
+    };
+
+    let mut builder = MenuBuilder::new(app);
+
+    for p in &profiles {
+        let label = if p.is_active {
+            format!("● {}", p.name)
+        } else {
+            format!("  {}", p.name)
+        };
+        let item = MenuItemBuilder::with_id(&p.id, label).build(app)?;
+        builder = builder.item(&item);
+    }
+
+    let sep = PredefinedMenuItem::separator(app)?;
+    let show_item = MenuItemBuilder::with_id("show", "打开主界面").build(app)?;
+    let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
+    builder = builder.item(&sep).item(&show_item).item(&quit_item);
+
+    let menu = builder.build()?;
+
+    TrayIconBuilder::new()
+        .menu(&menu)
+        .on_menu_event(move |app, event| {
+            let id = event.id.as_ref();
+            match id {
+                "show" => {
+                    if let Some(win) = app.get_webview_window("main") {
+                        let _ = win.show();
+                        let _ = win.set_focus();
+                    }
+                }
+                "quit" => app.exit(0),
+                profile_id => {
+                    let state = app.state::<AppState>();
+                    let db = state.db.lock().unwrap();
+                    let _ = services::profile::activate_profile(
+                        &db.conn,
+                        profile_id,
+                        &state.live_config_path,
+                    );
+                }
+            }
+        })
+        .build(app)?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let home = dirs::home_dir().expect("Could not determine home directory");
@@ -34,6 +92,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(state)
+        .setup(|app| {
+            build_tray(app)?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::profile::list_profiles,
             commands::profile::create_profile,
