@@ -2,7 +2,7 @@ import { useState, useRef } from "react"
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import { Button } from "../ui/button"
 import {
-  useProfiles, useActivateProfile, useDeleteProfile,
+  useProfiles, useDeleteProfile,
   useCreateProfile, useRenameProfile,
 } from "../../hooks/useProfiles"
 import { cn } from "../../lib/utils"
@@ -14,7 +14,6 @@ interface Props {
 
 export default function ProfileList({ selectedId, onSelect }: Props) {
   const { data: profiles = [], isLoading } = useProfiles()
-  const activate = useActivateProfile()
   const deleteProfile = useDeleteProfile()
   const createProfile = useCreateProfile()
   const renameProfile = useRenameProfile()
