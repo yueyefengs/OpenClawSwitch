@@ -51,4 +51,11 @@ mod tests {
             .unwrap();
         assert_eq!(fk, 1);
     }
+
+    #[test]
+    fn test_schema_migration_idempotency() {
+        let db = Database::open(Path::new(":memory:")).unwrap();
+        db.init().unwrap();
+        assert!(db.init().is_ok());
+    }
 }
