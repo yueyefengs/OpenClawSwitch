@@ -124,7 +124,100 @@ pub fn delete_profile(conn: &Connection, id: &str) -> Result<(), ProfileError> {
     Ok(())
 }
 
-/// Activate a profile: write live config file, set is_active=1, clear others
+/// Build the normalized models.json content from openclaw config.
+/// Mirrors models.providers, filling in defaults for missing model fields.
+fn build_models_json(config: &Value) -> Option<Value> {
+    let providers = config.pointer("/models/providers")?.as_object()?;
+    let mut normalized_providers = serde_json::Map::new();
+
+    for (provider_name, provider_config) in providers {
+        let mut norm = serde_json::Map::new();
+
+        for field in &["baseUrl", "apiKey", "api"] {
+            if let Some(v) = provider_config.get(*field) {
+                norm.insert(field.to_string(), v.clone());
+            }
+        }
+
+        let provider_api = provider_config
+            .get("api")
+            .and_then(|v| v.as_str())
+            .unwrap_or("openai-responses")
+            .to_string();
+
+        let models = provider_config
+            .get("models")
+            .and_then(|m| m.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let normalized_models: Vec<Value> = models
+            .into_iter()
+            .map(|mut model| {
+                if model.get("reasoning").is_none() {
+                    model["reasoning"] = serde_json::json!(false);
+                }
+                if model.get("input").is_none() {
+                    model["input"] = serde_json::json!(["text"]);
+                }
+                if model.get("cost").is_none() {
+                    model["cost"] = serde_json::json!({
+                        "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0
+                    });
+                }
+                if model.get("api").is_none() {
+                    model["api"] = serde_json::json!(provider_api);
+                }
+                model
+            })
+            .collect();
+
+        norm.insert("models".to_string(), Value::Array(normalized_models));
+        normalized_providers.insert(provider_name.clone(), Value::Object(norm));
+    }
+
+    Some(serde_json::json!({ "providers": Value::Object(normalized_providers) }))
+}
+
+/// Sync agent models.json cache files to match current models.providers config.
+/// Covers agents with explicit agentDir and those using the default path layout.
+fn sync_agent_models_cache(config: &Value, live_path: &std::path::Path) {
+    let models_json = match build_models_json(config) {
+        Some(v) => v,
+        None => return,
+    };
+    let content = match serde_json::to_string_pretty(&models_json) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let openclaw_dir = match live_path.parent() {
+        Some(d) => d.to_path_buf(),
+        None => return,
+    };
+
+    let agents = config
+        .pointer("/agents/list")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    for agent in &agents {
+        let agent_dir = if let Some(dir) = agent.get("agentDir").and_then(|v| v.as_str()) {
+            std::path::PathBuf::from(dir)
+        } else if let Some(id) = agent.get("id").and_then(|v| v.as_str()) {
+            openclaw_dir.join("agents").join(id).join("agent")
+        } else {
+            continue;
+        };
+
+        let cache_path = agent_dir.join("models.json");
+        if cache_path.exists() {
+            let _ = std::fs::write(&cache_path, &content);
+        }
+    }
+}
+
+/// Activate a profile: write live config file, sync agent caches, set is_active=1
 pub fn activate_profile(
     conn: &Connection,
     id: &str,
@@ -143,6 +236,9 @@ pub fn activate_profile(
 
     // Write file first (best-effort; DB is the source of truth for active state)
     super::config_parser::write_config(live_path, &config)?;
+
+    // Sync agent models.json caches to match new providers config
+    sync_agent_models_cache(&config, live_path);
 
     // Atomically update all active flags in a single statement
     let tx = conn.unchecked_transaction()?;
@@ -165,6 +261,23 @@ pub fn get_profile_config(conn: &Connection, id: &str) -> Result<Value, ProfileE
         other => ProfileError::Db(other),
     })?;
     Ok(serde_json::from_str(&config_json)?)
+}
+
+pub fn clone_profile(conn: &Connection, id: &str) -> Result<Profile, ProfileError> {
+    let (name, config_json): (String, String) = conn.query_row(
+        "SELECT p.name, pc.config_json FROM profiles p
+         JOIN profile_configs pc ON pc.profile_id = p.id
+         WHERE p.id = ?1",
+        params![id],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    ).map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => ProfileError::NotFound(id.to_string()),
+        other => ProfileError::Db(other),
+    })?;
+
+    let new_name = format!("{} (副本)", name);
+    let config: Value = serde_json::from_str(&config_json)?;
+    create_profile(conn, &new_name, None, config)
 }
 
 #[cfg(test)]

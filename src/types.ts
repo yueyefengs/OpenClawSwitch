@@ -7,39 +7,82 @@ export interface Profile {
   updated_at: string
 }
 
-export interface OpenclawConfig {
-  models?: {
-    providers?: Record<string, ProviderConfig>
-  }
-  agents?: {
-    defaults?: {
-      model?: { primary?: string; fallbacks?: string[] }
-      workspace?: string
-      heartbeat?: { every?: string; target?: string }
-    }
-  }
-  gateway?: {
-    bind?: string
-    port?: number
-    tailscale?: { mode?: string }
-    auth?: { mode?: string }
-  }
-  channels?: {
-    telegram?: ChannelConfig
-    discord?: ChannelConfig
-    whatsapp?: ChannelConfig
-    slack?: ChannelConfig & { appToken?: string }
-  }
+export interface ProviderModel {
+  id: string
+  label?: string
+  name?: string
+  contextWindow?: number
+  maxTokens?: number
+  reasoning?: boolean
 }
 
 export interface ProviderConfig {
+  api?: string
   apiKey?: string
   baseUrl?: string
+  models?: ProviderModel[]
 }
 
-export interface ChannelConfig {
-  enabled?: boolean
+export interface TelegramAccountConfig {
   botToken?: string
   dmPolicy?: "pairing" | "allowlist" | "open" | "disabled"
-  allowFrom?: string[]
+  groupPolicy?: "pairing" | "allowlist" | "open" | "disabled"
+  streaming?: boolean | "off" | "partial" | "block" | "progress"
+  allowFrom?: number[]
+}
+
+export interface TelegramChannelConfig {
+  enabled?: boolean
+  proxy?: string
+  dmPolicy?: "pairing" | "allowlist" | "open" | "disabled"
+  groupPolicy?: "pairing" | "allowlist" | "open" | "disabled"
+  streaming?: boolean | "off" | "partial" | "block" | "progress"
+  allowFrom?: number[]
+  accounts?: Record<string, TelegramAccountConfig>
+}
+
+export interface GatewayConfig {
+  mode?: "local" | "remote"
+  auth?: { token?: string }
+  remote?: { token?: string }
+}
+
+export interface AgentConfig {
+  id: string
+  model?: string
+  name?: string
+  agentDir?: string
+  workspace?: string
+}
+
+export interface AgentDefaults {
+  model?: { primary?: string; fallbacks?: string[] }
+  maxConcurrent?: number
+  compaction?: { mode?: string }
+  subagents?: { maxConcurrent?: number }
+  workspace?: string
+}
+
+export interface BindingConfig {
+  agentId: string
+  match: {
+    channel: string
+    accountId: string
+  }
+}
+
+export interface OpenclawConfig {
+  models?: {
+    mode?: string
+    providers?: Record<string, ProviderConfig>
+  }
+  agents?: {
+    defaults?: AgentDefaults
+    list?: AgentConfig[]
+  }
+  gateway?: GatewayConfig
+  channels?: {
+    telegram?: TelegramChannelConfig
+  }
+  bindings?: BindingConfig[]
 }

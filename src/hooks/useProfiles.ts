@@ -42,3 +42,11 @@ export function useRenameProfile() {
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.profiles }),
   })
 }
+
+export function useCloneProfile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => profileApi.clone(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.profiles }),
+  })
+}

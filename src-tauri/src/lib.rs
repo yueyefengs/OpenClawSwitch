@@ -1,4 +1,5 @@
 mod database;
+mod logger;
 mod services;
 mod commands;
 
@@ -9,6 +10,7 @@ use std::path::PathBuf;
 pub struct AppState {
     pub db: Mutex<Database>,
     pub live_config_path: PathBuf,
+    pub log_path: PathBuf,
 }
 
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
@@ -73,6 +75,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
 pub fn run() {
     let home = dirs::home_dir().expect("Could not determine home directory");
     let db_path = home.join(".openclaw-switch").join("switch.db");
+    let log_path = home.join(".openclaw-switch").join("app.log");
     let live_path = services::config_parser::default_openclaw_path()
         .unwrap_or_else(|| home.join(".openclaw").join("openclaw.json"));
 
@@ -87,6 +90,7 @@ pub fn run() {
     let state = AppState {
         db: Mutex::new(db),
         live_config_path: live_path,
+        log_path,
     };
 
     tauri::Builder::default()
@@ -104,6 +108,9 @@ pub fn run() {
             commands::profile::delete_profile,
             commands::profile::activate_profile,
             commands::profile::get_profile_config,
+            commands::profile::save_and_restart,
+            commands::profile::get_log_path,
+            commands::profile::clone_profile,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
