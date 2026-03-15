@@ -53,6 +53,22 @@ jobs:
       - name: Install frontend deps
         run: pnpm install
 
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          node -e "
+            const ver = process.env.TAG.replace(/^v/, '');
+            const fs = require('fs');
+            for (const f of ['src-tauri/tauri.conf.json', 'package.json']) {
+              const obj = JSON.parse(fs.readFileSync(f, 'utf8'));
+              obj.version = ver;
+              fs.writeFileSync(f, JSON.stringify(obj, null, 2) + '\n');
+            }
+            console.log('Version set to:', ver);
+          "
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
