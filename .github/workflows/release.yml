@@ -6,6 +6,9 @@ on:
       - "v*"           # 推送 v0.1.0 这样的 tag 时触发
   workflow_dispatch:   # 也可以在 Actions 页面手动触发
 
+permissions:
+  contents: write    # 允许创建 Release 和上传产物
+
 jobs:
   build:
     strategy:

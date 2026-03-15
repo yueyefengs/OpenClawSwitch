@@ -102,6 +102,17 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     ],
   },
   {
+    key: "shisha",
+    label: "时砂 (Shisha)",
+    api: "openai-responses",
+    baseUrl: "https://api.shishaapi.com/v1",
+    models: [
+      { id: "gpt-5.4-codex", name: "GPT-5.4-Codex" },
+      { id: "gpt-5.3-codex", name: "GPT-5.3-Codex" },
+      { id: "gpt-5.2-codex", name: "GPT-5.2-Codex" },
+    ],
+  },
+  {
     key: "openrouter",
     label: "OpenRouter",
     api: "openai-completions",
@@ -140,9 +151,10 @@ interface CardProps {
   onUpdate: (patch: Partial<ProviderConfig>) => void
   onRemove: () => void
   onRename: (newName: string) => void
+  onApplyPreset: (newName: string, patch: Partial<ProviderConfig>) => void
 }
 
-function ProviderCard({ name, prov, onUpdate, onRemove, onRename }: CardProps) {
+function ProviderCard({ name, prov, onUpdate, onRemove, onRename, onApplyPreset }: CardProps) {
   const [showKey, setShowKey] = useState(false)
   const [expanded, setExpanded] = useState(true)
   const [customId, setCustomId] = useState("")
@@ -160,11 +172,8 @@ function ProviderCard({ name, prov, onUpdate, onRemove, onRename }: CardProps) {
     if (!p) return
     setSelectedPreset(key)
     if (key !== "custom") {
-      onRename(key)
-      onUpdate({
-        api: p.api,
-        baseUrl: p.baseUrl ?? "",
-      })
+      // Rename + update config in one atomic onChange call
+      onApplyPreset(key, { api: p.api, baseUrl: p.baseUrl ?? "" })
     }
   }
 
@@ -405,6 +414,15 @@ export default function ProvidersTab({ config, onChange }: Props) {
     onChange({ ...config, models: { ...config.models, providers: next } })
   }
 
+  // Rename + apply config patch atomically (avoids stale-closure double-onChange bug)
+  function applyPresetToProvider(oldName: string, newName: string, patch: Partial<ProviderConfig>) {
+    const next: Record<string, ProviderConfig> = {}
+    for (const [k, v] of Object.entries(providers)) {
+      next[k === oldName ? newName : k] = k === oldName ? { ...v, ...patch } : v
+    }
+    onChange({ ...config, models: { ...config.models, providers: next } })
+  }
+
   function addProvider() {
     const key = `provider_${Date.now()}`
     onChange({
@@ -432,6 +450,7 @@ export default function ProvidersTab({ config, onChange }: Props) {
           onUpdate={patch => updateProvider(name, patch)}
           onRemove={() => removeProvider(name)}
           onRename={newName => renameProvider(name, newName)}
+          onApplyPreset={(newName, patch) => applyPresetToProvider(name, newName, patch)}
         />
       ))}
       <button
