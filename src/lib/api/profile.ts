@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core"
+import { listen } from "@tauri-apps/api/event"
 import type { Profile, OpenclawConfig, McpServer, McpServerConfig, Skill } from "../../types"
 
 export const profileApi = {
@@ -34,4 +35,17 @@ export const skillsApi = {
 export const fileApi = {
   write: (path: string, content: string) => invoke<void>("write_file", { path, content }),
   read: (path: string) => invoke<string>("read_file", { path }),
+}
+
+export interface OpenclawStatus {
+  installed: boolean
+  path: string | null
+}
+
+export const openclawApi = {
+  check: () => invoke<OpenclawStatus>("check_openclaw"),
+  install: () => invoke<void>("install_openclaw"),
+  uninstall: () => invoke<void>("uninstall_openclaw"),
+  onOutput: (cb: (line: string) => void) =>
+    listen<string>("openclaw-output", (e) => cb(e.payload)),
 }
