@@ -415,3 +415,81 @@ pub fn check_openclaw() -> OpenclawStatus {
         },
     }
 }
+
+/// Stream a command's stdout+stderr line-by-line via window events.
+/// Emits `event_name` with each line as payload.
+/// Sends sentinel `"\x00EXIT:0"` on success, `"\x00EXIT:1"` on failure.
+fn stream_command(
+    mut cmd: std::process::Command,
+    window: tauri::WebviewWindow,
+    event_name: &'static str,
+) {
+    use std::io::{BufRead, BufReader};
+    use tauri::Emitter;
+
+    cmd.stdout(std::process::Stdio::piped())
+       .stderr(std::process::Stdio::piped());
+
+    std::thread::spawn(move || {
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = window.emit(event_name, format!("[错误] 启动失败: {}", e));
+                let _ = window.emit(event_name, "\x00EXIT:1");
+                return;
+            }
+        };
+
+        let stdout = child.stdout.take().map(BufReader::new);
+        let stderr = child.stderr.take().map(BufReader::new);
+
+        let win2 = window.clone();
+        let stderr_thread = stderr.map(|r| {
+            std::thread::spawn(move || {
+                for line in r.lines().flatten() {
+                    let _ = win2.emit(event_name, line);
+                }
+            })
+        });
+
+        if let Some(r) = stdout {
+            for line in r.lines().flatten() {
+                let _ = window.emit(event_name, line);
+            }
+        }
+
+        if let Some(t) = stderr_thread {
+            let _ = t.join();
+        }
+
+        let ok = child.wait().map(|s| s.success()).unwrap_or(false);
+        let _ = window.emit(event_name, if ok { "\x00EXIT:0" } else { "\x00EXIT:1" });
+    });
+}
+
+#[tauri::command]
+pub fn install_openclaw(window: tauri::WebviewWindow) -> Result<(), CommandError> {
+    let path_env = augmented_path();
+
+    #[cfg(target_os = "windows")]
+    let cmd = {
+        let mut c = std::process::Command::new("powershell");
+        c.args([
+            "-NoProfile", "-NonInteractive", "-Command",
+            "& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1))) -NoOnboard",
+        ]);
+        c.env("PATH", &path_env);
+        c
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let cmd = {
+        let mut c = std::process::Command::new("bash");
+        c.args(["-c", "curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard"]);
+        c.env("PATH", &path_env);
+        c
+    };
+
+    stream_command(cmd, window, "openclaw-output");
+    Ok(())
+}
