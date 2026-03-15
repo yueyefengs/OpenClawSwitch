@@ -395,3 +395,23 @@ pub fn read_file(path: String) -> Result<String, CommandError> {
     std::fs::read_to_string(&p)
         .map_err(|e| CommandError(format!("读取文件失败: {}", e)))
 }
+
+#[derive(serde::Serialize)]
+pub struct OpenclawStatus {
+    pub installed: bool,
+    pub path: Option<String>,
+}
+
+#[tauri::command]
+pub fn check_openclaw() -> OpenclawStatus {
+    match find_openclaw() {
+        Some(p) => OpenclawStatus {
+            installed: true,
+            path: Some(p.to_string_lossy().into_owned()),
+        },
+        None => OpenclawStatus {
+            installed: false,
+            path: None,
+        },
+    }
+}

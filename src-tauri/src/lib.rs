@@ -119,6 +119,7 @@ pub fn run() {
             commands::profile::delete_skill,
             commands::profile::write_file,
             commands::profile::read_file,
+            commands::profile::check_openclaw,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
