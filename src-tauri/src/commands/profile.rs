@@ -5,6 +5,27 @@ use tauri::State;
 #[derive(Debug, serde::Serialize)]
 pub struct CommandError(String);
 
+/// Run `openclaw gateway restart` in a way that works from GUI apps.
+///
+/// macOS/Linux GUI apps inherit a stripped PATH (no /usr/local/bin, /opt/homebrew/bin, etc.).
+/// Spawning a login shell with `-l` sources the user's profile so `openclaw` is found
+/// wherever the user installed it. Windows uses cmd /C directly.
+fn run_openclaw_gateway_restart() -> std::io::Result<std::process::Output> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "openclaw gateway restart"])
+            .output()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        std::process::Command::new(&shell)
+            .args(["-l", "-c", "openclaw gateway restart"])
+            .output()
+    }
+}
+
 impl From<profile::ProfileError> for CommandError {
     fn from(e: profile::ProfileError) -> Self {
         CommandError(e.to_string())
@@ -117,9 +138,7 @@ pub fn save_and_restart(
 
     // Phase 4: restart gateway; restore backup on failure
     logger::log_info(&log_path, "save_and_restart: Phase4 - running `openclaw gateway restart`");
-    let output = std::process::Command::new("openclaw")
-        .args(["gateway", "restart"])
-        .output()
+    let output = run_openclaw_gateway_restart()
         .map_err(|e| {
             if let Some(ref content) = backup {
                 let _ = std::fs::write(&live_path, content);
