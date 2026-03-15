@@ -496,3 +496,19 @@ pub fn install_openclaw(window: tauri::WebviewWindow) -> Result<(), CommandError
     stream_command(cmd, window, "openclaw-output");
     Ok(())
 }
+
+#[tauri::command]
+pub fn uninstall_openclaw(window: tauri::WebviewWindow) -> Result<(), CommandError> {
+    let bin = match find_openclaw() {
+        Some(p) => p,
+        None => return Err(CommandError("openclaw 未安装".into())),
+    };
+
+    let path_env = augmented_path();
+    let mut cmd = std::process::Command::new(bin);
+    cmd.args(["uninstall", "--all", "--yes"]);
+    cmd.env("PATH", &path_env);
+
+    stream_command(cmd, window, "openclaw-output");
+    Ok(())
+}
