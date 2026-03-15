@@ -443,24 +443,27 @@ fn stream_command(
         let stdout = child.stdout.take().map(BufReader::new);
         let stderr = child.stderr.take().map(BufReader::new);
 
-        let win2 = window.clone();
-        let stderr_thread = stderr.map(|r| {
+        // Both streams consumed in independent threads to prevent pipe buffer deadlock
+        let win_out = window.clone();
+        let stdout_thread = stdout.map(|r| {
             std::thread::spawn(move || {
                 for line in r.lines().flatten() {
-                    let _ = win2.emit(event_name, line);
+                    let _ = win_out.emit(event_name, line);
                 }
             })
         });
 
-        if let Some(r) = stdout {
-            for line in r.lines().flatten() {
-                let _ = window.emit(event_name, line);
-            }
-        }
+        let win_err = window.clone();
+        let stderr_thread = stderr.map(|r| {
+            std::thread::spawn(move || {
+                for line in r.lines().flatten() {
+                    let _ = win_err.emit(event_name, line);
+                }
+            })
+        });
 
-        if let Some(t) = stderr_thread {
-            let _ = t.join();
-        }
+        if let Some(t) = stdout_thread { let _ = t.join(); }
+        if let Some(t) = stderr_thread { let _ = t.join(); }
 
         let ok = child.wait().map(|s| s.success()).unwrap_or(false);
         let _ = window.emit(event_name, if ok { "\x00EXIT:0" } else { "\x00EXIT:1" });
