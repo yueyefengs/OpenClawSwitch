@@ -53,18 +53,59 @@ fn find_openclaw() -> Option<std::path::PathBuf> {
     })
 }
 
+/// Build an augmented PATH string that includes common binary directories.
+///
+/// GUI apps on macOS/Linux inherit a stripped PATH. We prepend well-known
+/// locations so that scripts like openclaw (which internally exec node/python)
+/// can find their runtimes without relying on the process environment.
+fn augmented_path() -> String {
+    let extra = [
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+        "/usr/local/sbin",
+    ];
+
+    // Append home-relative dirs
+    let home_dirs: Vec<String> = dirs::home_dir()
+        .map(|h| {
+            vec![
+                h.join(".local/bin").to_string_lossy().into_owned(),
+                h.join(".npm-global/bin").to_string_lossy().into_owned(),
+                h.join(".yarn/bin").to_string_lossy().into_owned(),
+                h.join("n/bin").to_string_lossy().into_owned(),
+            ]
+        })
+        .unwrap_or_default();
+
+    let current = std::env::var("PATH").unwrap_or_default();
+
+    let mut parts: Vec<&str> = extra.iter().map(|s| *s).collect();
+    let home_strs: Vec<&str> = home_dirs.iter().map(|s| s.as_str()).collect();
+    parts.extend(home_strs);
+    if !current.is_empty() {
+        parts.push(&current);
+    }
+
+    parts.join(":")
+}
+
 /// Run `openclaw gateway restart` in a way that works from GUI apps.
 ///
-/// 1. Search well-known install paths for the binary and invoke it directly.
-/// 2. Fall back to a login shell in case the binary is in an unusual location.
+/// 1. Search well-known install paths for the openclaw binary.
+/// 2. Invoke it with an augmented PATH so any runtimes it calls (node, etc.) are found.
+/// 3. Fall back to a login+interactive shell if the binary isn't in a standard location.
 fn run_openclaw_gateway_restart() -> std::io::Result<std::process::Output> {
+    let path_env = augmented_path();
+
     if let Some(bin) = find_openclaw() {
         return std::process::Command::new(bin)
             .args(["gateway", "restart"])
+            .env("PATH", &path_env)
             .output();
     }
 
-    // Fallback: login shell — picks up PATH from .zprofile / .bash_profile
+    // Fallback: login+interactive shell — sources .zprofile and .zshrc
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("cmd")
@@ -74,9 +115,9 @@ fn run_openclaw_gateway_restart() -> std::io::Result<std::process::Output> {
     #[cfg(not(target_os = "windows"))]
     {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-        // Use both -l (login) and -i (interactive) so .zshrc is also sourced
         std::process::Command::new(&shell)
             .args(["-l", "-i", "-c", "openclaw gateway restart"])
+            .env("PATH", &path_env)
             .output()
     }
 }
