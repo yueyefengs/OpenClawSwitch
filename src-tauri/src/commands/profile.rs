@@ -5,12 +5,66 @@ use tauri::State;
 #[derive(Debug, serde::Serialize)]
 pub struct CommandError(String);
 
+/// Locate the `openclaw` binary by searching well-known install paths.
+///
+/// GUI apps get a stripped PATH that misses /usr/local/bin, Homebrew, npm globals, etc.
+/// We search common locations directly so we never depend on the process PATH.
+fn find_openclaw() -> Option<std::path::PathBuf> {
+    let home = dirs::home_dir();
+
+    #[cfg(target_os = "windows")]
+    let candidates: Vec<std::path::PathBuf> = {
+        let mut v = vec![
+            std::path::PathBuf::from(r"C:\Program Files\openclaw\openclaw.exe"),
+        ];
+        if let Some(h) = &home {
+            v.push(h.join(r"AppData\Roaming\npm\openclaw.cmd"));
+            v.push(h.join(r"AppData\Roaming\npm\openclaw.exe"));
+        }
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            v.push(std::path::PathBuf::from(&appdata).join(r"npm\openclaw.cmd"));
+        }
+        v
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let candidates: Vec<std::path::PathBuf> = {
+        let mut v = vec![
+            std::path::PathBuf::from("/usr/local/bin/openclaw"),
+            std::path::PathBuf::from("/opt/homebrew/bin/openclaw"),
+            std::path::PathBuf::from("/usr/bin/openclaw"),
+            std::path::PathBuf::from("/usr/local/lib/node_modules/.bin/openclaw"),
+        ];
+        if let Some(h) = &home {
+            v.push(h.join(".local/bin/openclaw"));
+            v.push(h.join(".npm-global/bin/openclaw"));
+            v.push(h.join(".yarn/bin/openclaw"));
+            // nvm default
+            v.push(h.join(".nvm/versions/node").join("*").join("bin/openclaw"));
+            // n (node version manager)
+            v.push(h.join("n/bin/openclaw"));
+        }
+        v
+    };
+
+    candidates.into_iter().find(|p| {
+        // Skip glob-style paths (nvm wildcard), only test concrete paths
+        !p.to_string_lossy().contains('*') && p.exists()
+    })
+}
+
 /// Run `openclaw gateway restart` in a way that works from GUI apps.
 ///
-/// macOS/Linux GUI apps inherit a stripped PATH (no /usr/local/bin, /opt/homebrew/bin, etc.).
-/// Spawning a login shell with `-l` sources the user's profile so `openclaw` is found
-/// wherever the user installed it. Windows uses cmd /C directly.
+/// 1. Search well-known install paths for the binary and invoke it directly.
+/// 2. Fall back to a login shell in case the binary is in an unusual location.
 fn run_openclaw_gateway_restart() -> std::io::Result<std::process::Output> {
+    if let Some(bin) = find_openclaw() {
+        return std::process::Command::new(bin)
+            .args(["gateway", "restart"])
+            .output();
+    }
+
+    // Fallback: login shell — picks up PATH from .zprofile / .bash_profile
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("cmd")
@@ -20,8 +74,9 @@ fn run_openclaw_gateway_restart() -> std::io::Result<std::process::Output> {
     #[cfg(not(target_os = "windows"))]
     {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        // Use both -l (login) and -i (interactive) so .zshrc is also sourced
         std::process::Command::new(&shell)
-            .args(["-l", "-c", "openclaw gateway restart"])
+            .args(["-l", "-i", "-c", "openclaw gateway restart"])
             .output()
     }
 }
