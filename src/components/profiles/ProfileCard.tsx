@@ -1,5 +1,4 @@
 import { Copy, Pencil, Play, Trash2 } from "lucide-react"
-import { Button } from "../ui/button"
 import { cn } from "../../lib/utils"
 import type { Profile } from "../../types"
 
@@ -17,19 +16,22 @@ export default function ProfileCard({ profile, onEdit, onActivate, onClone, onDe
   return (
     <div
       className={cn(
-        "flex items-center gap-4 rounded-lg border px-4 py-3 transition-colors",
+        "flex items-center gap-3 rounded-xl border bg-white px-4 py-3.5 transition-colors",
         profile.is_active
-          ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
-          : "hover:bg-accent"
+          ? "border-blue-400 bg-blue-50/60"
+          : "border-border hover:bg-gray-50/80"
       )}
     >
+      {/* Drag handle */}
+      <span className="text-gray-300 cursor-grab select-none text-base leading-none">⠿⠿</span>
+
       {/* Avatar */}
       <div
         className={cn(
-          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
           profile.is_active
             ? "bg-blue-500 text-white"
-            : "bg-muted text-muted-foreground"
+            : "bg-gray-100 text-gray-500"
         )}
       >
         {initial}
@@ -37,60 +39,68 @@ export default function ProfileCard({ profile, onEdit, onActivate, onClone, onDe
 
       {/* Name + description */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-sm truncate">{profile.name}</span>
-          {profile.is_active && (
-            <span className="text-xs text-blue-600 dark:text-blue-400 shrink-0">● 当前激活</span>
-          )}
-        </div>
-        {profile.description && (
-          <p className="text-xs text-muted-foreground truncate mt-0.5">{profile.description}</p>
+        <p className="font-semibold text-sm leading-tight truncate">{profile.name}</p>
+        {profile.description ? (
+          <p className="text-xs text-blue-500 truncate mt-0.5">{profile.description}</p>
+        ) : (
+          <p className="text-xs text-gray-400 mt-0.5">
+            {profile.is_active ? "当前激活" : "未激活"}
+          </p>
         )}
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-0.5 shrink-0">
         {!profile.is_active && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 text-xs"
+          <button
+            className="flex items-center gap-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium px-3 py-1.5 transition-colors mr-2"
             onClick={() => onActivate(profile.id)}
           >
-            <Play size={12} />
+            <Play size={11} />
             启用
-          </Button>
+          </button>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          title="编辑"
-          onClick={() => onEdit(profile.id)}
-        >
+        <IconBtn title="编辑" onClick={() => onEdit(profile.id)}>
           <Pencil size={14} />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          title="复制"
-          onClick={() => onClone(profile.id)}
-        >
+        </IconBtn>
+        <IconBtn title="复制" onClick={() => onClone(profile.id)}>
           <Copy size={14} />
-        </Button>
+        </IconBtn>
         {!profile.is_active && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+          <IconBtn
             title="删除"
+            className="hover:text-red-500"
             onClick={() => onDelete(profile.id)}
           >
             <Trash2 size={14} />
-          </Button>
+          </IconBtn>
         )}
       </div>
     </div>
+  )
+}
+
+function IconBtn({
+  children,
+  title,
+  className,
+  onClick,
+}: {
+  children: React.ReactNode
+  title?: string
+  className?: string
+  onClick?: () => void
+}) {
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      className={cn(
+        "flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors",
+        className
+      )}
+    >
+      {children}
+    </button>
   )
 }

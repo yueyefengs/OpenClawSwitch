@@ -217,6 +217,136 @@ fn sync_agent_models_cache(config: &Value, live_path: &std::path::Path) {
     }
 }
 
+/// Sync auth-profiles.json for each agent with direct API keys from models.providers.
+/// This bypasses the keyRef/env-var mechanism so credentials are always resolved,
+/// regardless of whether the env var is set in the gateway's process environment.
+fn sync_agent_auth_profiles(config: &Value, live_path: &std::path::Path) {
+    // Collect provider → apiKey pairs
+    let providers = match config.pointer("/models/providers").and_then(|v| v.as_object()) {
+        Some(p) => p.clone(),
+        None => return,
+    };
+    let mut provider_keys: Vec<(String, String)> = Vec::new();
+    for (provider_name, provider_cfg) in &providers {
+        if let Some(key) = provider_cfg.get("apiKey").and_then(|v| v.as_str()) {
+            if !key.is_empty() {
+                provider_keys.push((provider_name.clone(), key.to_string()));
+            }
+        }
+    }
+    if provider_keys.is_empty() {
+        return;
+    }
+
+    let openclaw_dir = match live_path.parent() {
+        Some(d) => d.to_path_buf(),
+        None => return,
+    };
+
+    let agents = config
+        .pointer("/agents/list")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    for agent in &agents {
+        let agent_dir = if let Some(dir) = agent.get("agentDir").and_then(|v| v.as_str()) {
+            std::path::PathBuf::from(dir)
+        } else if let Some(id) = agent.get("id").and_then(|v| v.as_str()) {
+            openclaw_dir.join("agents").join(id).join("agent")
+        } else {
+            continue;
+        };
+
+        let auth_path = agent_dir.join("auth-profiles.json");
+        if !auth_path.exists() {
+            continue;
+        }
+
+        // Read existing store
+        let mut store: serde_json::Map<String, Value> = std::fs::read_to_string(&auth_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .and_then(|v: Value| v.as_object().cloned())
+            .unwrap_or_default();
+
+        let profiles = store
+            .entry("profiles")
+            .or_insert_with(|| serde_json::json!({}))
+            .as_object_mut()
+            .cloned()
+            .unwrap_or_default();
+        let mut profiles = profiles;
+
+        for (provider_name, api_key) in &provider_keys {
+            let profile_id = format!("{}:default", provider_name);
+            let existing = profiles.get(&profile_id).cloned().unwrap_or(serde_json::json!({}));
+            let mut entry = existing.as_object().cloned().unwrap_or_default();
+
+            entry.insert("type".to_string(), serde_json::json!("api_key"));
+            entry.insert("provider".to_string(), serde_json::json!(provider_name));
+            entry.insert("key".to_string(), serde_json::json!(api_key));
+            entry.remove("keyRef"); // remove indirect reference — direct key takes precedence
+
+            profiles.insert(profile_id, Value::Object(entry));
+        }
+
+        store.insert("profiles".to_string(), Value::Object(profiles));
+        let _ = std::fs::write(&auth_path, serde_json::to_string_pretty(&Value::Object(store)).unwrap_or_default());
+    }
+}
+
+/// Inject provider API credentials into env.vars so OpenClaw's keyRef mechanism can resolve them.
+/// For `openai`: writes OPENAI_API_KEY and (if present) OPENAI_API_BASE.
+fn inject_provider_env_vars(config: &mut Value) {
+    let providers = match config.pointer("/models/providers").and_then(|v| v.as_object()) {
+        Some(p) => p.clone(),
+        None => return,
+    };
+
+    // Collect injections: (env_var_name, value)
+    let mut injections: Vec<(String, String)> = Vec::new();
+
+    for (provider_name, provider_cfg) in &providers {
+        let api_key = provider_cfg.get("apiKey").and_then(|v| v.as_str());
+        let base_url = provider_cfg.get("baseUrl").and_then(|v| v.as_str());
+
+        // Map provider name → standard env var names
+        let (key_var, base_var) = match provider_name.as_str() {
+            "openai" => ("OPENAI_API_KEY", Some("OPENAI_API_BASE")),
+            "anthropic" => ("ANTHROPIC_API_KEY", None),
+            _ => continue,
+        };
+
+        if let Some(key) = api_key {
+            if !key.is_empty() {
+                injections.push((key_var.to_string(), key.to_string()));
+            }
+        }
+        if let (Some(url), Some(base_var_name)) = (base_url, base_var) {
+            if !url.is_empty() {
+                injections.push((base_var_name.to_string(), url.to_string()));
+            }
+        }
+    }
+
+    if injections.is_empty() {
+        return;
+    }
+
+    // Ensure env.vars path exists
+    if config.pointer("/env").is_none() {
+        config["env"] = serde_json::json!({});
+    }
+    if config.pointer("/env/vars").is_none() {
+        config["env"]["vars"] = serde_json::json!({});
+    }
+
+    for (var_name, value) in injections {
+        config["env"]["vars"][var_name] = serde_json::json!(value);
+    }
+}
+
 /// Activate a profile: write live config file, sync agent caches, set is_active=1
 pub fn activate_profile(
     conn: &Connection,
@@ -232,10 +362,16 @@ pub fn activate_profile(
         other => ProfileError::Db(other),
     })?;
 
-    let config: Value = serde_json::from_str(&config_json)?;
+    let mut config: Value = serde_json::from_str(&config_json)?;
+
+    // Inject provider credentials into env.vars so OpenClaw's keyRef mechanism resolves them
+    inject_provider_env_vars(&mut config);
 
     // Write file first (best-effort; DB is the source of truth for active state)
     super::config_parser::write_config(live_path, &config)?;
+
+    // Sync agent auth-profiles.json with direct keys (bypasses keyRef/env-var indirection)
+    sync_agent_auth_profiles(&config, live_path);
 
     // Sync agent models.json caches to match new providers config
     sync_agent_models_cache(&config, live_path);
@@ -262,6 +398,107 @@ pub fn get_profile_config(conn: &Connection, id: &str) -> Result<Value, ProfileE
     })?;
     Ok(serde_json::from_str(&config_json)?)
 }
+
+// ─── MCP Servers ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct McpServer {
+    pub id: String,
+    pub name: String,
+    pub config: Value,
+}
+
+pub fn list_mcp_servers(conn: &Connection) -> Result<Vec<McpServer>, ProfileError> {
+    let mut stmt = conn.prepare("SELECT id, name, config FROM mcp_servers ORDER BY name")?;
+    let servers = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+    })?.collect::<Result<Vec<_>, _>>()?;
+    servers.into_iter().map(|(id, name, cfg)| {
+        Ok(McpServer { id, name, config: serde_json::from_str(&cfg)? })
+    }).collect()
+}
+
+pub fn upsert_mcp_server(
+    conn: &Connection,
+    id: &str,
+    name: &str,
+    config: Value,
+) -> Result<McpServer, ProfileError> {
+    let config_json = serde_json::to_string(&config)?;
+    conn.execute(
+        "INSERT INTO mcp_servers (id, name, config) VALUES (?1, ?2, ?3)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, config = excluded.config",
+        params![id, name, config_json],
+    )?;
+    Ok(McpServer { id: id.to_string(), name: name.to_string(), config })
+}
+
+pub fn delete_mcp_server(conn: &Connection, id: &str) -> Result<(), ProfileError> {
+    let changed = conn.execute("DELETE FROM mcp_servers WHERE id = ?1", params![id])?;
+    if changed == 0 {
+        return Err(ProfileError::NotFound(id.to_string()));
+    }
+    Ok(())
+}
+
+// ─── Skills ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Skill {
+    pub id: String,
+    pub name: String,
+    pub source_url: Option<String>,
+    pub install_path: Option<String>,
+    pub installed_at: Option<String>,
+}
+
+pub fn list_skills(conn: &Connection) -> Result<Vec<Skill>, ProfileError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, source_url, install_path, installed_at FROM skills ORDER BY name"
+    )?;
+    let skills = stmt.query_map([], |row| {
+        Ok(Skill {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            source_url: row.get(2)?,
+            install_path: row.get(3)?,
+            installed_at: row.get(4)?,
+        })
+    })?.collect::<Result<Vec<_>, _>>()?;
+    Ok(skills)
+}
+
+pub fn upsert_skill(
+    conn: &Connection,
+    id: &str,
+    name: &str,
+    source_url: Option<&str>,
+    install_path: Option<&str>,
+) -> Result<Skill, ProfileError> {
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO skills (id, name, source_url, install_path, installed_at) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, source_url = excluded.source_url, install_path = excluded.install_path",
+        params![id, name, source_url, install_path, now],
+    )?;
+    Ok(Skill {
+        id: id.to_string(),
+        name: name.to_string(),
+        source_url: source_url.map(str::to_string),
+        install_path: install_path.map(str::to_string),
+        installed_at: Some(now),
+    })
+}
+
+pub fn delete_skill(conn: &Connection, id: &str) -> Result<(), ProfileError> {
+    let changed = conn.execute("DELETE FROM skills WHERE id = ?1", params![id])?;
+    if changed == 0 {
+        return Err(ProfileError::NotFound(id.to_string()));
+    }
+    Ok(())
+}
+
+// ─── Clone ───────────────────────────────────────────────────────────────────
 
 pub fn clone_profile(conn: &Connection, id: &str) -> Result<Profile, ProfileError> {
     let (name, config_json): (String, String) = conn.query_row(
@@ -341,5 +578,241 @@ mod tests {
         assert!(live.exists());
         let profiles = list_profiles(&db.conn).unwrap();
         assert!(profiles[0].is_active);
+    }
+
+    #[test]
+    fn test_activate_injects_openai_api_key_into_env_vars() {
+        let db = setup_db();
+        let dir = TempDir::new().unwrap();
+        let live = dir.path().join("openclaw.json");
+        let config = serde_json::json!({
+            "models": {
+                "providers": {
+                    "openai": {
+                        "apiKey": "sk-test-key-123",
+                        "baseUrl": "https://api.example.com/v1"
+                    }
+                }
+            }
+        });
+        let p = create_profile(&db.conn, "work", None, config).unwrap();
+        activate_profile(&db.conn, &p.id, &live).unwrap();
+
+        let written = std::fs::read_to_string(&live).unwrap();
+        let written_config: serde_json::Value = serde_json::from_str(&written).unwrap();
+        assert_eq!(
+            written_config.pointer("/env/vars/OPENAI_API_KEY"),
+            Some(&serde_json::json!("sk-test-key-123")),
+            "OPENAI_API_KEY should be injected into env.vars"
+        );
+        assert_eq!(
+            written_config.pointer("/env/vars/OPENAI_API_BASE"),
+            Some(&serde_json::json!("https://api.example.com/v1")),
+            "OPENAI_API_BASE should be injected into env.vars"
+        );
+    }
+
+    #[test]
+    fn test_activate_injects_openai_key_without_base_url() {
+        let db = setup_db();
+        let dir = TempDir::new().unwrap();
+        let live = dir.path().join("openclaw.json");
+        let config = serde_json::json!({
+            "models": {
+                "providers": {
+                    "openai": { "apiKey": "sk-only-key" }
+                }
+            }
+        });
+        let p = create_profile(&db.conn, "work", None, config).unwrap();
+        activate_profile(&db.conn, &p.id, &live).unwrap();
+
+        let written = std::fs::read_to_string(&live).unwrap();
+        let written_config: serde_json::Value = serde_json::from_str(&written).unwrap();
+        assert_eq!(
+            written_config.pointer("/env/vars/OPENAI_API_KEY"),
+            Some(&serde_json::json!("sk-only-key")),
+        );
+        // 没有 baseUrl 时不应写入 OPENAI_API_BASE
+        assert_eq!(written_config.pointer("/env/vars/OPENAI_API_BASE"), None);
+    }
+
+    #[test]
+    fn test_activate_preserves_existing_env_vars() {
+        let db = setup_db();
+        let dir = TempDir::new().unwrap();
+        let live = dir.path().join("openclaw.json");
+        let config = serde_json::json!({
+            "models": {
+                "providers": {
+                    "openai": { "apiKey": "sk-new-key" }
+                }
+            },
+            "env": {
+                "vars": {
+                    "HTTP_PROXY": "http://127.0.0.1:7897",
+                    "OPENAI_API_KEY": "sk-old-key"
+                }
+            }
+        });
+        let p = create_profile(&db.conn, "work", None, config).unwrap();
+        activate_profile(&db.conn, &p.id, &live).unwrap();
+
+        let written = std::fs::read_to_string(&live).unwrap();
+        let written_config: serde_json::Value = serde_json::from_str(&written).unwrap();
+        // 已有 env var 应保留
+        assert_eq!(
+            written_config.pointer("/env/vars/HTTP_PROXY"),
+            Some(&serde_json::json!("http://127.0.0.1:7897")),
+        );
+        // 旧的 OPENAI_API_KEY 应被新值覆盖
+        assert_eq!(
+            written_config.pointer("/env/vars/OPENAI_API_KEY"),
+            Some(&serde_json::json!("sk-new-key")),
+        );
+    }
+
+    #[test]
+    fn test_activate_no_provider_no_env_injection() {
+        let db = setup_db();
+        let dir = TempDir::new().unwrap();
+        let live = dir.path().join("openclaw.json");
+        let config = serde_json::json!({"models": {"providers": {}}});
+        let p = create_profile(&db.conn, "work", None, config).unwrap();
+        activate_profile(&db.conn, &p.id, &live).unwrap();
+
+        let written = std::fs::read_to_string(&live).unwrap();
+        let written_config: serde_json::Value = serde_json::from_str(&written).unwrap();
+        // 无 provider 时不创建 env.vars
+        assert_eq!(written_config.pointer("/env/vars/OPENAI_API_KEY"), None);
+    }
+
+    #[test]
+    fn test_sync_auth_profiles_writes_direct_key() {
+        let dir = TempDir::new().unwrap();
+        let live = dir.path().join("openclaw.json");
+
+        // 建立 agent 目录和已存在的 auth-profiles.json（含 keyRef）
+        let agent_dir = dir.path().join("agents").join("social").join("agent");
+        std::fs::create_dir_all(&agent_dir).unwrap();
+        let auth_path = agent_dir.join("auth-profiles.json");
+        std::fs::write(&auth_path, serde_json::json!({
+            "version": 1,
+            "profiles": {
+                "openai:default": {
+                    "type": "api_key",
+                    "provider": "openai",
+                    "keyRef": { "source": "env", "provider": "default", "id": "OPENAI_API_KEY" }
+                }
+            },
+            "lastGood": { "openai": "openai:default" },
+            "usageStats": { "openai:default": { "errorCount": 0 } }
+        }).to_string()).unwrap();
+
+        let config = serde_json::json!({
+            "models": {
+                "providers": {
+                    "openai": {
+                        "apiKey": "sk-direct-key-xyz",
+                        "baseUrl": "https://api.ezai88.com/v1"
+                    }
+                }
+            },
+            "agents": {
+                "list": [{ "id": "social", "agentDir": agent_dir.to_str().unwrap() }]
+            }
+        });
+
+        let db = setup_db();
+        let p = create_profile(&db.conn, "test", None, config).unwrap();
+        activate_profile(&db.conn, &p.id, &live).unwrap();
+
+        let auth_written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&auth_path).unwrap()).unwrap();
+
+        // 直接写入 key，不再有 keyRef
+        assert_eq!(
+            auth_written.pointer("/profiles/openai:default/key"),
+            Some(&serde_json::json!("sk-direct-key-xyz")),
+            "direct key should be written to auth-profiles.json"
+        );
+        assert_eq!(
+            auth_written.pointer("/profiles/openai:default/keyRef"),
+            None,
+            "keyRef should be removed when direct key is written"
+        );
+        // lastGood 和 usageStats 保留
+        assert_eq!(
+            auth_written.pointer("/lastGood/openai"),
+            Some(&serde_json::json!("openai:default"))
+        );
+    }
+
+    #[test]
+    fn test_sync_auth_profiles_preserves_other_providers() {
+        let dir = TempDir::new().unwrap();
+        let live = dir.path().join("openclaw.json");
+
+        let agent_dir = dir.path().join("agents").join("main").join("agent");
+        std::fs::create_dir_all(&agent_dir).unwrap();
+        let auth_path = agent_dir.join("auth-profiles.json");
+        std::fs::write(&auth_path, serde_json::json!({
+            "version": 1,
+            "profiles": {
+                "zai:default": { "type": "api_key", "provider": "zai", "key": "zai-old-key" },
+                "openai:default": { "type": "api_key", "provider": "openai", "key": "sk-old" }
+            }
+        }).to_string()).unwrap();
+
+        let config = serde_json::json!({
+            "models": {
+                "providers": {
+                    "openai": { "apiKey": "sk-new-key" }
+                }
+            },
+            "agents": {
+                "list": [{ "id": "main", "agentDir": agent_dir.to_str().unwrap() }]
+            }
+        });
+
+        let db = setup_db();
+        let p = create_profile(&db.conn, "test", None, config).unwrap();
+        activate_profile(&db.conn, &p.id, &live).unwrap();
+
+        let auth_written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&auth_path).unwrap()).unwrap();
+
+        // openai key 已更新
+        assert_eq!(
+            auth_written.pointer("/profiles/openai:default/key"),
+            Some(&serde_json::json!("sk-new-key"))
+        );
+        // zai 条目保留不动
+        assert_eq!(
+            auth_written.pointer("/profiles/zai:default/key"),
+            Some(&serde_json::json!("zai-old-key"))
+        );
+    }
+
+    #[test]
+    fn test_sync_auth_profiles_skips_missing_file() {
+        let dir = TempDir::new().unwrap();
+        let live = dir.path().join("openclaw.json");
+
+        // agent 目录不存在（未初始化的 agent）
+        let agent_dir = dir.path().join("agents").join("ghost").join("agent");
+
+        let config = serde_json::json!({
+            "models": { "providers": { "openai": { "apiKey": "sk-key" } } },
+            "agents": {
+                "list": [{ "id": "ghost", "agentDir": agent_dir.to_str().unwrap() }]
+            }
+        });
+
+        let db = setup_db();
+        let p = create_profile(&db.conn, "test", None, config).unwrap();
+        // 不应 panic 或报错
+        activate_profile(&db.conn, &p.id, &live).unwrap();
+        assert!(!agent_dir.join("auth-profiles.json").exists());
     }
 }

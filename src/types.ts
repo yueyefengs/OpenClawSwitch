@@ -71,6 +71,26 @@ export interface BindingConfig {
   }
 }
 
+export interface McpServer {
+  id: string
+  name: string
+  config: McpServerConfig
+}
+
+export interface McpServerConfig {
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+}
+
+export interface Skill {
+  id: string
+  name: string
+  source_url?: string
+  install_path?: string
+  installed_at?: string
+}
+
 export interface OpenclawConfig {
   models?: {
     mode?: string

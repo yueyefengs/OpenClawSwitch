@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { ChevronLeft } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
-import { Button } from "../ui/button"
+import { Input } from "../ui/input"
 import { profileApi } from "../../lib/api/profile"
 import { queryKeys } from "../../lib/query"
 import ProvidersTab from "./ProvidersTab"
@@ -78,6 +78,17 @@ export default function ProfileEditor({ profileId, onBack }: Props) {
     if (config) setDraft(config)
   }, [config])
 
+  const [nameInput, setNameInput] = useState("")
+  useEffect(() => {
+    if (currentProfile) setNameInput(currentProfile.name)
+  }, [currentProfile?.name])
+
+  const rename = useMutation({
+    mutationFn: (name: string) => profileApi.rename(profileId, name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.profiles }),
+    onError: (e) => toast.error(`重命名失败: ${e}`),
+  })
+
   const save = useMutation({
     mutationFn: () => profileApi.saveAndRestart(profileId, normalizeConfig(draft) as OpenclawConfig),
     onSuccess: () => {
@@ -121,42 +132,71 @@ export default function ProfileEditor({ profileId, onBack }: Props) {
 
   const isBusy = save.isPending || activate.isPending
 
-  if (isLoading) return <div className="p-6 text-muted-foreground text-sm">加载中...</div>
+  if (isLoading) return <div className="p-6 text-gray-400 text-sm">加载中...</div>
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-3 border-b">
+    <div className="flex flex-col h-full bg-gray-50/50">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3.5 bg-white border-b shrink-0">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onBack}>
+          <button
+            onClick={onBack}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+          >
             <ChevronLeft size={16} />
-          </Button>
-          <span className="font-medium text-sm">{currentProfile?.name ?? "—"}</span>
+          </button>
+          <Input
+            className="h-8 text-sm font-semibold w-44 border-transparent bg-transparent shadow-none focus-visible:border-input focus-visible:bg-white focus-visible:shadow-sm"
+            value={nameInput}
+            onChange={e => setNameInput(e.target.value)}
+            onBlur={() => {
+              const trimmed = nameInput.trim()
+              if (trimmed && trimmed !== currentProfile?.name) {
+                rename.mutate(trimmed)
+              } else {
+                setNameInput(currentProfile?.name ?? "")
+              }
+            }}
+            onKeyDown={e => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur()
+              if (e.key === "Escape") {
+                setNameInput(currentProfile?.name ?? "")
+                ;(e.target as HTMLInputElement).blur()
+              }
+            }}
+          />
+          {currentProfile?.is_active && (
+            <span className="text-xs text-blue-500 font-medium shrink-0">● 激活中</span>
+          )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleSave} disabled={isBusy}>
+          <button
+            onClick={handleSave}
+            disabled={isBusy}
+            className="rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-medium px-3 py-1.5 transition-colors disabled:opacity-50"
+          >
             {save.isPending ? "保存中…" : "保存"}
-          </Button>
+          </button>
           {!currentProfile?.is_active && (
-            <Button
-              size="sm"
+            <button
               onClick={handleActivate}
               disabled={isBusy}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium px-3 py-1.5 transition-colors disabled:opacity-50"
             >
-              激活 ▶
-            </Button>
-          )}
-          {currentProfile?.is_active && (
-            <span className="text-xs text-green-600 flex items-center gap-1">● 当前激活</span>
+              <span>▶</span> 激活
+            </button>
           )}
         </div>
       </div>
       <Tabs defaultValue="providers" className="flex-1 flex flex-col min-h-0">
-        <TabsList className="mx-6 mt-4 w-fit shrink-0">
-          <TabsTrigger value="providers">Providers</TabsTrigger>
-          <TabsTrigger value="channels">Channels</TabsTrigger>
-          <TabsTrigger value="gateway">Gateway</TabsTrigger>
-          <TabsTrigger value="agents">Agents</TabsTrigger>
-        </TabsList>
+        <div className="shrink-0 bg-white border-b flex justify-center px-5 pt-3 pb-0">
+          <TabsList className="h-auto rounded-xl bg-gray-100/80 p-1 gap-0.5">
+            <TabsTrigger value="providers" className="rounded-lg px-5 py-1.5 text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-md data-[state=active]:font-semibold">Providers</TabsTrigger>
+            <TabsTrigger value="channels" className="rounded-lg px-5 py-1.5 text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-md data-[state=active]:font-semibold">Channels</TabsTrigger>
+            <TabsTrigger value="gateway" className="rounded-lg px-5 py-1.5 text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-md data-[state=active]:font-semibold">Gateway</TabsTrigger>
+            <TabsTrigger value="agents" className="rounded-lg px-5 py-1.5 text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-md data-[state=active]:font-semibold">Agents</TabsTrigger>
+          </TabsList>
+        </div>
         <TabsContent value="providers" className="flex-1 overflow-auto mt-0">
           <ProvidersTab config={draft} onChange={setDraft} />
         </TabsContent>
@@ -166,7 +206,7 @@ export default function ProfileEditor({ profileId, onBack }: Props) {
         <TabsContent value="gateway" className="flex-1 overflow-auto mt-0">
           <GatewayTab config={draft} onChange={setDraft} />
         </TabsContent>
-        <TabsContent value="agents" className="flex-1 overflow-auto mt-0">
+        <TabsContent value="agents" className="flex-1 overflow-hidden mt-0 p-0">
           <AgentsTab config={draft} onChange={setDraft} />
         </TabsContent>
       </Tabs>

@@ -111,6 +111,14 @@ pub fn run() {
             commands::profile::save_and_restart,
             commands::profile::get_log_path,
             commands::profile::clone_profile,
+            commands::profile::list_mcp_servers,
+            commands::profile::upsert_mcp_server,
+            commands::profile::delete_mcp_server,
+            commands::profile::list_skills,
+            commands::profile::upsert_skill,
+            commands::profile::delete_skill,
+            commands::profile::write_file,
+            commands::profile::read_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

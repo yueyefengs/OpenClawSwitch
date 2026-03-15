@@ -193,3 +193,90 @@ pub fn clone_profile(state: State<'_, AppState>, id: String) -> Result<profile::
     let db = state.db.lock().unwrap();
     profile::clone_profile(&db.conn, &id).map_err(Into::into)
 }
+
+// ─── MCP Servers ─────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn list_mcp_servers(state: State<'_, AppState>) -> Result<Vec<profile::McpServer>, CommandError> {
+    let db = state.db.lock().unwrap();
+    profile::list_mcp_servers(&db.conn).map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn upsert_mcp_server(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+    config: serde_json::Value,
+) -> Result<profile::McpServer, CommandError> {
+    let db = state.db.lock().unwrap();
+    profile::upsert_mcp_server(&db.conn, &id, &name, config).map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn delete_mcp_server(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
+    let db = state.db.lock().unwrap();
+    profile::delete_mcp_server(&db.conn, &id).map_err(Into::into)
+}
+
+// ─── Skills ───────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn list_skills(state: State<'_, AppState>) -> Result<Vec<profile::Skill>, CommandError> {
+    let db = state.db.lock().unwrap();
+    profile::list_skills(&db.conn).map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn upsert_skill(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+    source_url: Option<String>,
+    install_path: Option<String>,
+) -> Result<profile::Skill, CommandError> {
+    let db = state.db.lock().unwrap();
+    profile::upsert_skill(&db.conn, &id, &name, source_url.as_deref(), install_path.as_deref())
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn delete_skill(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
+    let db = state.db.lock().unwrap();
+    profile::delete_skill(&db.conn, &id).map_err(Into::into)
+}
+
+// ─── File utilities ────────────────────────────────────────────────────────────
+
+fn expand_tilde(path: &str) -> std::path::PathBuf {
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(rest);
+        }
+    } else if path == "~" {
+        if let Some(home) = dirs::home_dir() {
+            return home;
+        }
+    }
+    std::path::PathBuf::from(path)
+}
+
+/// Write content to a file, creating parent directories as needed.
+#[tauri::command]
+pub fn write_file(path: String, content: String) -> Result<(), CommandError> {
+    let p = expand_tilde(&path);
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| CommandError(format!("创建目录失败: {}", e)))?;
+    }
+    std::fs::write(&p, content)
+        .map_err(|e| CommandError(format!("写入文件失败: {}", e)))
+}
+
+/// Read content of a file.
+#[tauri::command]
+pub fn read_file(path: String) -> Result<String, CommandError> {
+    let p = expand_tilde(&path);
+    std::fs::read_to_string(&p)
+        .map_err(|e| CommandError(format!("读取文件失败: {}", e)))
+}
