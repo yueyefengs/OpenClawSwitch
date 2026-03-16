@@ -195,22 +195,42 @@ pub fn install_skill_from_clawhub(
     let home = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
     let target_dir = home.join(".openclaw").join("skills").join(&slug);
 
-    // Download ZIP
+    // Download ZIP (retry up to 3 times on 429 rate-limit)
     let url = format!(
         "https://clawhub.ai/api/v1/download?slug={}&version={}",
         slug, version
     );
 
-    let response = ureq::get(&url)
-        .call()
-        .map_err(|e| format!("Download failed: {e}"))?;
-
     let mut bytes: Vec<u8> = Vec::new();
     use std::io::Read;
-    response
-        .into_reader()
-        .read_to_end(&mut bytes)
-        .map_err(|e| format!("Failed to read download response: {e}"))?;
+
+    let mut last_err = String::new();
+    let mut downloaded = false;
+    for attempt in 0..3u32 {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_secs(2u64.pow(attempt)));
+        }
+        match ureq::get(&url).call() {
+            Ok(response) => {
+                response
+                    .into_reader()
+                    .read_to_end(&mut bytes)
+                    .map_err(|e| format!("Failed to read download response: {e}"))?;
+                downloaded = true;
+                break;
+            }
+            Err(ureq::Error::Status(429, _)) => {
+                last_err = "下载被限速 (429)，请稍后重试".to_string();
+                eprintln!("[clawhub] rate limited on attempt {}, retrying...", attempt + 1);
+            }
+            Err(e) => {
+                return Err(format!("Download failed: {e}"));
+            }
+        }
+    }
+    if !downloaded {
+        return Err(last_err);
+    }
 
     // Extract ZIP to target directory
     let cursor = std::io::Cursor::new(bytes);
@@ -288,29 +308,34 @@ pub fn install_skill_from_clawhub(
 
 #[tauri::command]
 pub fn uninstall_skill(state: State<AppState>, id: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| format!("DB lock error: {e}"))?;
+    let home = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
+    let skills_base = home.join(".openclaw").join("skills");
 
-    let install_path: Option<String> = db
-        .conn
-        .query_row(
+    // Skills discovered from the filesystem (not in DB) use "fs:<slug>" as ID.
+    // Derive the install_path directly from the slug without touching the DB.
+    let install_path_str: Option<String> = if let Some(slug) = id.strip_prefix("fs:") {
+        let path = skills_base.join(slug);
+        Some(path.to_string_lossy().into_owned())
+    } else {
+        // Regular DB-tracked skill: look up install_path
+        let db = state.db.lock().map_err(|e| format!("DB lock error: {e}"))?;
+        let result = db.conn.query_row(
             "SELECT install_path FROM skills WHERE id = ?1",
             rusqlite::params![id],
             |row| row.get(0),
-        )
-        .map_err(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => {
-                format!("Skill not found: {}", id)
+        );
+        match result {
+            Ok(p) => p,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                return Err(format!("Skill not found: {}", id));
             }
-            other => format!("DB error: {other}"),
-        })?;
+            Err(e) => return Err(format!("DB error: {e}")),
+        }
+    };
 
     // Remove the directory if it's inside ~/.openclaw/skills/
-    if let Some(path_str) = install_path {
-        let home =
-            dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
-        let skills_base = home.join(".openclaw").join("skills");
+    if let Some(path_str) = install_path_str {
         let install_path = std::path::PathBuf::from(&path_str);
-
         if install_path.starts_with(&skills_base) {
             if install_path.exists() {
                 std::fs::remove_dir_all(&install_path)
@@ -324,13 +349,12 @@ pub fn uninstall_skill(state: State<AppState>, id: String) -> Result<(), String>
         }
     }
 
-    let changed = db
-        .conn
-        .execute("DELETE FROM skills WHERE id = ?1", rusqlite::params![id])
-        .map_err(|e| format!("DB error: {e}"))?;
-
-    if changed == 0 {
-        return Err(format!("Skill not found: {}", id));
+    // Remove from DB if it's a DB-tracked skill (fs: entries have no DB row)
+    if !id.starts_with("fs:") {
+        let db = state.db.lock().map_err(|e| format!("DB lock error: {e}"))?;
+        db.conn
+            .execute("DELETE FROM skills WHERE id = ?1", rusqlite::params![id])
+            .map_err(|e| format!("DB error: {e}"))?;
     }
 
     Ok(())

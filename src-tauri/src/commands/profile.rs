@@ -336,10 +336,88 @@ pub fn delete_mcp_server(state: State<'_, AppState>, id: String) -> Result<(), C
 
 // ─── Skills ───────────────────────────────────────────────────────────────────
 
+/// Read the `name:` field from a SKILL.md file, falling back to the slug.
+fn read_skill_name(skill_dir: &std::path::Path, slug: &str) -> String {
+    let md = skill_dir.join("SKILL.md");
+    if let Ok(content) = std::fs::read_to_string(&md) {
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("name:") {
+                let name = rest.trim().trim_matches('"').trim_matches('\'');
+                if !name.is_empty() {
+                    return name.to_string();
+                }
+            }
+        }
+    }
+    slug.to_string()
+}
+
+/// Parse ~/.openclaw/skills/.clawhub/lock.json → map of slug → source_url "clawhub:<slug>"
+fn clawhub_installed_slugs(skills_base: &std::path::Path) -> std::collections::HashSet<String> {
+    let lock = skills_base.join(".clawhub").join("lock.json");
+    let mut set = std::collections::HashSet::new();
+    if let Ok(content) = std::fs::read_to_string(&lock) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(obj) = v.get("skills").and_then(|s| s.as_object()) {
+                for key in obj.keys() {
+                    set.insert(key.clone());
+                }
+            }
+        }
+    }
+    set
+}
+
 #[tauri::command]
 pub fn list_skills(state: State<'_, AppState>) -> Result<Vec<profile::Skill>, CommandError> {
     let db = state.db.lock().unwrap();
-    profile::list_skills(&db.conn).map_err(Into::into)
+    let mut skills = profile::list_skills(&db.conn)?;
+
+    // Also scan ~/.openclaw/skills/ for skills not recorded in DB
+    if let Some(home) = dirs::home_dir() {
+        let skills_base = home.join(".openclaw").join("skills");
+        let clawhub_slugs = clawhub_installed_slugs(&skills_base);
+
+        // Build set of install_paths already in DB
+        let known_paths: std::collections::HashSet<String> = skills
+            .iter()
+            .filter_map(|s| s.install_path.clone())
+            .collect();
+
+        if let Ok(entries) = std::fs::read_dir(&skills_base) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_dir() {
+                    continue;
+                }
+                let slug = match path.file_name().and_then(|n| n.to_str()) {
+                    Some(s) if !s.starts_with('.') => s.to_string(),
+                    _ => continue,
+                };
+                let path_str = path.to_string_lossy().into_owned();
+                if known_paths.contains(&path_str) {
+                    continue; // already in DB
+                }
+                let name = read_skill_name(&path, &slug);
+                let source_url = if clawhub_slugs.contains(&slug) {
+                    Some(format!("clawhub:{}", slug))
+                } else {
+                    None
+                };
+                skills.push(profile::Skill {
+                    id: format!("fs:{}", slug),
+                    name,
+                    source_url,
+                    install_path: Some(path_str),
+                    installed_at: None,
+                });
+            }
+        }
+        skills.sort_by(|a, b| a.name.cmp(&b.name));
+    }
+
+    Ok(skills)
 }
 
 #[tauri::command]
