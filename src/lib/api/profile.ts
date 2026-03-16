@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
-import type { Profile, OpenclawConfig, McpServer, McpServerConfig, Skill } from "../../types"
+import type { Profile, OpenclawConfig, McpServer, McpServerConfig, Skill, ClawhubSkill } from "../../types"
 
 export const profileApi = {
   list: () => invoke<Profile[]>("list_profiles"),
@@ -30,6 +30,13 @@ export const skillsApi = {
   upsert: (id: string, name: string, sourceUrl: string | null, installPath: string | null) =>
     invoke<Skill>("upsert_skill", { id, name, sourceUrl, installPath }),
   delete: (id: string) => invoke<void>("delete_skill", { id }),
+}
+
+export const clawhubApi = {
+  search: (q: string) => invoke<ClawhubSkill[]>("search_clawhub", { q }),
+  install: (slug: string, displayName: string, version: string) =>
+    invoke<Skill>("install_skill_from_clawhub", { slug, displayName, version }),
+  uninstall: (id: string) => invoke<void>("uninstall_skill", { id }),
 }
 
 export const fileApi = {

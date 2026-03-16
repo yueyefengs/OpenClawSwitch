@@ -122,6 +122,9 @@ pub fn run() {
             commands::profile::check_openclaw,
             commands::profile::install_openclaw,
             commands::profile::uninstall_openclaw,
+            commands::clawhub::search_clawhub,
+            commands::clawhub::install_skill_from_clawhub,
+            commands::clawhub::uninstall_skill,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

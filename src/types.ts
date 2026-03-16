@@ -91,6 +91,15 @@ export interface Skill {
   installed_at?: string
 }
 
+export interface ClawhubSkill {
+  slug: string
+  displayName: string
+  summary: string
+  version: string
+  stars: number
+  downloads: number
+}
+
 export interface OpenclawConfig {
   models?: {
     mode?: string
