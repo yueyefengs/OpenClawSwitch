@@ -1,5 +1,6 @@
 import { Plus, Server, Puzzle, Settings } from "lucide-react"
 import ProfileCard from "./ProfileCard"
+import OpenclawManager from "../openclaw/OpenclawManager"
 import {
   useProfiles,
   useActivateProfile,
@@ -57,6 +58,7 @@ export default function ProfileListPage({ onEdit, onMcp, onSkills }: Props) {
           <span className="font-bold text-base text-blue-600 tracking-tight">OpenClaw Switch</span>
         </div>
         <div className="flex items-center gap-1">
+          <OpenclawManager />
           <TopBtn title="MCP Servers" onClick={onMcp}>
             <Server size={15} />
           </TopBtn>
