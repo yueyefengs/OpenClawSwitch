@@ -158,26 +158,26 @@ export default function McpServersPage({ onBack }: Props) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-50/50">
-      <div className="flex items-center justify-between px-5 py-3.5 bg-white border-b shrink-0">
+    <div className="flex flex-col h-full bg-[#F5F7FA]">
+      <div className="flex items-center justify-between px-4 h-[52px] bg-white border-b border-[#EAECF0] shrink-0">
         <div className="flex items-center gap-2">
           <button
             onClick={onBack}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-[#9CA3AF] hover:text-[#374151] hover:bg-[#F3F4F6] transition-colors"
           >
             <ChevronLeft size={16} />
           </button>
-          <span className="font-semibold text-sm">MCP Servers</span>
+          <span className="font-semibold text-[13px] text-[#111827]">MCP Servers</span>
         </div>
         <button
           onClick={handleAdd}
-          className="flex items-center gap-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium px-3 py-1.5 transition-colors"
+          className="flex items-center gap-1.5 rounded-lg bg-[#4F63FF] hover:bg-[#3D50E0] text-white text-[12px] font-semibold px-3 h-7 transition-colors"
         >
           <Plus size={13} /> 添加
         </button>
       </div>
 
-      <div className="flex-1 overflow-auto px-5 py-4 space-y-3">
+      <div className="flex-1 overflow-auto px-4 py-4 space-y-3">
         {isLoading && (
           <p className="text-sm text-muted-foreground">加载中...</p>
         )}

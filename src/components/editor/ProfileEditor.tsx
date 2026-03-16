@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { ChevronLeft } from "lucide-react"
+import { ChevronLeft, Play } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
 import { Input } from "../ui/input"
 import { profileApi } from "../../lib/api/profile"
@@ -132,21 +132,21 @@ export default function ProfileEditor({ profileId, onBack }: Props) {
 
   const isBusy = save.isPending || activate.isPending
 
-  if (isLoading) return <div className="p-6 text-gray-400 text-sm">加载中...</div>
+  if (isLoading) return <div className="p-6 text-[#9CA3AF] text-sm">加载中...</div>
 
   return (
-    <div className="flex flex-col h-full bg-gray-50/50">
+    <div className="flex flex-col h-full bg-[#F5F7FA]">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 bg-white border-b shrink-0">
+      <div className="flex items-center justify-between px-4 h-[52px] bg-white border-b border-[#EAECF0] shrink-0">
         <div className="flex items-center gap-2">
           <button
             onClick={onBack}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-[#9CA3AF] hover:text-[#374151] hover:bg-[#F3F4F6] transition-colors"
           >
             <ChevronLeft size={16} />
           </button>
           <Input
-            className="h-8 text-sm font-semibold w-44 border-transparent bg-transparent shadow-none focus-visible:border-input focus-visible:bg-white focus-visible:shadow-sm"
+            className="h-8 text-[13px] font-semibold w-40 border-transparent bg-transparent shadow-none focus-visible:border-[#E5E7EB] focus-visible:bg-white focus-visible:shadow-sm text-[#111827]"
             value={nameInput}
             onChange={e => setNameInput(e.target.value)}
             onBlur={() => {
@@ -166,14 +166,17 @@ export default function ProfileEditor({ profileId, onBack }: Props) {
             }}
           />
           {currentProfile?.is_active && (
-            <span className="text-xs text-blue-500 font-medium shrink-0">● 激活中</span>
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#16A34A] bg-[#F0FDF4] px-2 py-0.5 rounded-full shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] inline-block" />
+              激活中
+            </span>
           )}
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={handleSave}
             disabled={isBusy}
-            className="rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-medium px-3 py-1.5 transition-colors disabled:opacity-50"
+            className="rounded-lg border border-[#E5E7EB] bg-white hover:bg-[#F9FAFB] text-[#374151] text-[12px] font-medium px-3 h-7 transition-colors disabled:opacity-50"
           >
             {save.isPending ? "保存中…" : "保存"}
           </button>
@@ -181,20 +184,28 @@ export default function ProfileEditor({ profileId, onBack }: Props) {
             <button
               onClick={handleActivate}
               disabled={isBusy}
-              className="flex items-center gap-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium px-3 py-1.5 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-lg bg-[#4F63FF] hover:bg-[#3D50E0] text-white text-[12px] font-semibold px-3 h-7 transition-colors disabled:opacity-50"
             >
-              <span>▶</span> 激活
+              <Play size={10} strokeWidth={2.5} />
+              激活
             </button>
           )}
         </div>
       </div>
+
+      {/* Tabs */}
       <Tabs defaultValue="providers" className="flex-1 flex flex-col min-h-0">
-        <div className="shrink-0 bg-white border-b flex justify-center px-5 pt-3 pb-0">
-          <TabsList className="h-auto rounded-xl bg-gray-100/80 p-1 gap-0.5">
-            <TabsTrigger value="providers" className="rounded-lg px-5 py-1.5 text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-md data-[state=active]:font-semibold">Providers</TabsTrigger>
-            <TabsTrigger value="channels" className="rounded-lg px-5 py-1.5 text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-md data-[state=active]:font-semibold">Channels</TabsTrigger>
-            <TabsTrigger value="gateway" className="rounded-lg px-5 py-1.5 text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-md data-[state=active]:font-semibold">Gateway</TabsTrigger>
-            <TabsTrigger value="agents" className="rounded-lg px-5 py-1.5 text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-md data-[state=active]:font-semibold">Agents</TabsTrigger>
+        <div className="shrink-0 bg-white border-b border-[#EAECF0] flex justify-center px-4 py-2">
+          <TabsList className="h-8 rounded-lg bg-[#F3F4F6] p-0.5 gap-0.5">
+            {(["providers", "channels", "gateway", "agents"] as const).map((tab) => (
+              <TabsTrigger
+                key={tab}
+                value={tab}
+                className="rounded-md px-4 h-7 text-[12px] font-medium text-[#6B7280] data-[state=active]:bg-white data-[state=active]:text-[#4F63FF] data-[state=active]:font-semibold data-[state=active]:shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-all"
+              >
+                {tab === "providers" ? "Providers" : tab === "channels" ? "Channels" : tab === "gateway" ? "Gateway" : "Agents"}
+              </TabsTrigger>
+            ))}
           </TabsList>
         </div>
         <TabsContent value="providers" className="flex-1 overflow-auto mt-0">
@@ -213,4 +224,3 @@ export default function ProfileEditor({ profileId, onBack }: Props) {
     </div>
   )
 }
-

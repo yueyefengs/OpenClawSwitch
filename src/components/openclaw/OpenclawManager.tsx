@@ -1,12 +1,9 @@
 import { useState, useEffect, useRef } from "react"
-import { Loader2 } from "lucide-react"
+import { Loader2, X, Folder, PackageCheck, PackageX, Trash2, Download } from "lucide-react"
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
 } from "../ui/dialog"
-import { Button } from "../ui/button"
 import { openclawApi, type OpenclawStatus } from "../../lib/api/profile"
 import { cn } from "../../lib/utils"
 
@@ -16,14 +13,6 @@ function InstallIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 1024 1024" className={className} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
       <path d="M786.432 563.9168a180.3264 180.3264 0 0 1 180.0704 180.0704c0 38.2976-12.288 75.6224-35.1232 106.3936l84.6336 84.6336a27.2896 27.2896 0 0 1-38.6048 38.5024l-84.6336-84.5824c-29.8496 21.9648-66.56 35.1232-106.3936 35.1232a180.2752 180.2752 0 0 1-180.0704-180.0704 180.224 180.224 0 0 1 180.0704-180.0704zM701.44 0c47.872 0 92.0576 25.4464 115.712 66.6624l4.1984 7.936 61.44 126.1568a43.4688 43.4688 0 0 1 4.352 19.0976l0.4608 344.7296a207.36 207.36 0 0 0-82.944-25.3952V338.7904a51.2 51.2 0 0 0-51.2-51.2H131.1232a51.2 51.2 0 0 0-51.2 51.2v422.2464a51.2 51.2 0 0 0 51.2 51.2h456.7552c9.2672 28.2624 24.4224 53.8624 43.9808 75.4176l-543.0784-0.0512c-23.552 0-46.08-9.216-62.7712-25.7536A87.552 87.552 0 0 1 0 799.744V219.8528c0.3072-4.1984 0.9728-8.3968 2.2528-12.5952l2.4576-6.144 59.392-125.3376A133.12 133.12 0 0 1 175.616 0.3072L184.6272 0H701.44z m84.992 617.8304a130.6624 130.6624 0 0 0-130.56 130.56 130.6112 130.6112 0 0 0 130.56 130.56 130.6624 130.6624 0 0 0 130.5088-130.56 130.6624 130.6624 0 0 0-130.56-130.56zM445.1328 364.8512c22.4256 0 32.768 17.152 32.768 31.9488v241.152l61.7984-55.2448a30.208 30.208 0 0 1 40.6016 0c3.3792 3.328 5.4784 9.8816 6.2976 19.712-2.1504 8.7552-4.9664 14.848-8.3456 18.1248L471.04 720.384l-1.1776 1.2288c-10.752 10.4448-38.912 10.24-49.664-0.256l-111.7696-100.864a26.368 26.368 0 0 1 0-37.7856 27.648 27.648 0 0 1 38.5536 0l65.3312 55.296V396.4928c0-14.848 12.7488-31.744 32.768-31.744z m260.4032-299.1104H181.248c-14.6432 0-28.3648 9.0624-36.2496 24.1152l-2.6624 5.888-35.9936 84.5824a20.48 20.48 0 0 0 18.8416 28.5184h638.9248a20.48 20.48 0 0 0 18.6368-28.928l-38.5024-84.6848c-6.3488-15.872-18.8928-26.8288-33.28-29.0816l-5.4272-0.4096z" />
-    </svg>
-  )
-}
-
-function UninstallIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 1024 1024" className={className} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-      <path d="M258.844444 161.28c-51.029333 0-92.387556 42.951111-92.387555 95.971556h739.555555c0-53.020444-41.415111-95.971556-92.444444-95.971556H258.844444z m406.812445 36.977778h-258.844445l13.539556-100.977778h231.708444l13.653334 100.977778zM413.013333 33.28c-25.429333 0-49.095111 16.042667-52.622222 35.726222l-18.033778 100.693334c-3.527111 19.626667 14.449778 35.669333 39.822223 35.669333h308.167111c25.429333 0 43.349333-16.042667 39.822222-35.726222l-18.033778-100.693334c-3.527111-19.626667-27.192889-35.669333-52.622222-35.669333H413.013333zM243.484444 296.391111c-33.848889 0-59.050667 28.672-56.035555 63.715556l50.517333 576.512c3.072 35.100444 33.336889 63.715556 67.185778 63.715555h462.222222c33.905778 0 64.170667-28.672 67.242667-63.715555l50.460444-576.512c3.072-35.043556-22.186667-63.715556-56.035555-63.715556H243.484444z m77.084445 630.044445L287.402667 376.035556h125.553777v550.343111H320.512z m277.333333 0H474.567111V377.400889h123.278222v548.977778z m61.610667 0V376.832h133.688889l-41.244445 549.546667h-92.444444z" />
     </svg>
   )
 }
@@ -108,53 +97,61 @@ export default function OpenclawManager() {
         className={cn(
           "flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
           installed
-            ? "text-green-500 hover:text-green-600 hover:bg-green-50"
-            : "text-red-400 hover:text-red-500 hover:bg-red-50"
+            ? "text-[#10B981] hover:text-[#059669] hover:bg-[#F0FDF4]"
+            : "text-[#F87171] hover:text-[#EF4444] hover:bg-[#FFF5F5]"
         )}
       >
         <InstallIcon className="w-[15px] h-[15px]" />
       </button>
 
       <Dialog open={open} onOpenChange={(v) => { if (phase !== "running") setOpen(v) }}>
-        <DialogContent className="max-w-sm p-0 overflow-hidden rounded-xl border-0 shadow-2xl">
+        <DialogContent className="max-w-sm p-0 overflow-hidden rounded-2xl border-0 shadow-[0_20px_60px_rgba(0,0,0,0.4)] bg-transparent">
 
-          {/* Header band */}
+          {/* ── Top: colored header ── */}
           <div className={cn(
-            "px-5 pt-5 pb-4",
-            installed ? "bg-green-50" : "bg-orange-50"
+            "relative px-6 pt-6 pb-7",
+            installed ? "bg-[#ECFDF5]" : "bg-[#FFF7ED]"
           )}>
-            <DialogHeader className="space-y-0">
-              <div className="flex items-center gap-3">
-                <div className={cn(
-                  "flex items-center justify-center w-10 h-10 rounded-xl",
-                  installed ? "bg-green-100" : "bg-orange-100"
-                )}>
-                  <InstallIcon className={cn(
-                    "w-5 h-5",
-                    installed ? "text-green-600" : "text-orange-500"
-                  )} />
-                </div>
-                <div>
-                  <DialogTitle className="text-sm font-semibold text-gray-800 leading-tight">
-                    OpenClaw
-                  </DialogTitle>
-                  <p className={cn(
-                    "text-xs mt-0.5 font-medium",
-                    installed ? "text-green-600" : "text-orange-500"
-                  )}>
-                    {installed ? "已安装" : "未安装"}
-                  </p>
-                </div>
+            {/* Close button */}
+            <button
+              onClick={closeDialog}
+              disabled={phase === "running"}
+              className="absolute top-4 right-4 flex h-7 w-7 items-center justify-center rounded-lg text-[#9CA3AF] hover:text-[#374151] hover:bg-black/8 transition-colors disabled:opacity-40"
+            >
+              <X size={15} />
+            </button>
+
+            {/* Icon + title */}
+            <div className="flex items-center gap-4">
+              <div className={cn(
+                "flex items-center justify-center w-14 h-14 rounded-2xl",
+                installed ? "bg-[#D1FAE5]" : "bg-[#FEE2CC]"
+              )}>
+                {installed
+                  ? <PackageCheck size={28} className="text-[#16A34A]" strokeWidth={1.5} />
+                  : <PackageX size={28} className="text-[#EA580C]" strokeWidth={1.5} />
+                }
               </div>
-            </DialogHeader>
+              <div>
+                <p className="text-[18px] font-bold text-[#111827] leading-tight">OpenClaw</p>
+                <p className={cn(
+                  "text-[13px] font-semibold mt-0.5",
+                  installed ? "text-[#16A34A]" : "text-[#EA580C]"
+                )}>
+                  {installed ? "已安装" : "未安装"}
+                </p>
+              </div>
+            </div>
           </div>
 
-          <div className="px-5 py-4 space-y-4">
+          {/* ── Bottom: light body ── */}
+          <div className="bg-white px-5 py-5 space-y-4 rounded-b-2xl">
+
             {/* Install path */}
             {installed && status?.path && phase === "idle" && (
-              <div className="flex items-start gap-2 bg-gray-50 rounded-lg px-3 py-2">
-                <span className="text-gray-400 text-xs mt-0.5 shrink-0">路径</span>
-                <span className="text-gray-600 text-xs font-mono break-all leading-relaxed">
+              <div className="flex items-center gap-3 bg-[#F3F4F6] rounded-xl px-4 py-3">
+                <Folder size={15} className="text-[#9CA3AF] shrink-0" />
+                <span className="text-[12px] text-[#374151] font-mono break-all leading-relaxed flex-1">
                   {status.path}
                 </span>
               </div>
@@ -162,37 +159,40 @@ export default function OpenclawManager() {
 
             {/* Not installed hint */}
             {!installed && phase === "idle" && (
-              <p className="text-xs text-gray-500 leading-relaxed">
-                OpenClaw 尚未安装。点击下方按钮自动下载并安装，安装过程需要网络连接。
-              </p>
+              <div className="flex items-start gap-3 bg-[#F3F4F6] rounded-xl px-4 py-3">
+                <Download size={15} className="text-[#9CA3AF] shrink-0 mt-0.5" />
+                <p className="text-[12px] text-[#6B7280] leading-relaxed">
+                  OpenClaw 尚未安装。点击下方按钮自动下载并安装，安装过程需要网络连接。
+                </p>
+              </div>
             )}
 
             {/* Log terminal */}
             {(phase !== "idle" || logs.length > 0) && (
-              <div className="relative rounded-lg overflow-hidden border border-gray-800">
-                <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-900 border-b border-gray-800">
-                  <div className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/70" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-green-500/70" />
-                  <span className="ml-1 text-gray-500 text-xs">
+              <div className="rounded-xl overflow-hidden border border-[#2D3448]">
+                <div className="flex items-center gap-1.5 px-3 py-2 bg-[#111827]">
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#EF4444]/70" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]/70" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#10B981]/70" />
+                  <span className="ml-2 text-[#4B5563] text-[11px] font-mono">
                     {phase === "running"
                       ? (logs.length === 0 ? "正在启动..." : "执行中...")
                       : phase === "done-ok" ? "完成"
                       : "失败"}
                   </span>
                   {phase === "running" && (
-                    <Loader2 size={10} className="animate-spin text-gray-500 ml-auto" />
+                    <Loader2 size={10} className="animate-spin text-[#4B5563] ml-auto" />
                   )}
                 </div>
-                <div className="bg-gray-950 text-gray-200 p-3 h-44 overflow-y-auto font-mono text-[11px] leading-relaxed">
+                <div className="bg-[#0D1117] text-[#E6EDF3] p-3 h-40 overflow-y-auto font-mono text-[11px] leading-relaxed">
                   {logs.map((l, i) => (
-                    <div key={i} className="text-gray-300">{l}</div>
+                    <div key={i} className="text-[#8B949E]">{l}</div>
                   ))}
                   {phase === "done-ok" && (
-                    <div className="text-green-400 mt-1 font-semibold">✓ 安装完成</div>
+                    <div className="text-[#3FB950] mt-1 font-semibold">✓ 操作完成</div>
                   )}
                   {phase === "done-err" && (
-                    <div className="text-red-400 mt-1 font-semibold">✗ 操作失败</div>
+                    <div className="text-[#F85149] mt-1 font-semibold">✗ 操作失败</div>
                   )}
                   <div ref={logEndRef} />
                 </div>
@@ -201,62 +201,62 @@ export default function OpenclawManager() {
 
             {/* Uninstall confirm warning */}
             {confirmUninstall && phase === "idle" && (
-              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
-                <UninstallIcon className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-red-700 leading-relaxed">
-                  确认卸载 OpenClaw？这将删除 gateway 服务和本地数据，操作不可恢复。
+              <div className="flex items-start gap-3 bg-[#FFF5F5] border border-[#FECACA] rounded-xl px-4 py-3">
+                <Trash2 size={14} className="text-[#EF4444] shrink-0 mt-0.5" />
+                <p className="text-[11px] text-[#B91C1C] leading-relaxed">
+                  确认卸载 OpenClaw？这将删除 gateway 服务，操作不可恢复。
                 </p>
               </div>
             )}
 
             {/* Actions */}
-            <div className="flex items-center justify-end gap-2 pt-1">
+            <div className="flex items-center justify-end gap-2">
+
               {phase === "idle" && !installed && (
-                <Button
-                  size="sm"
-                  className="bg-orange-500 hover:bg-orange-600 text-white gap-1.5 h-8"
+                <button
                   onClick={() => startOperation("install")}
+                  className="flex items-center gap-2 rounded-xl border border-[#EA580C]/50 bg-[#FFF7ED] hover:bg-[#FFEDD5] text-[#EA580C] text-[12px] font-semibold px-4 h-9 transition-colors"
                 >
-                  <InstallIcon className="w-3.5 h-3.5" />
+                  <Download size={14} />
                   一键安装
-                </Button>
+                </button>
               )}
 
               {phase === "idle" && installed && !confirmUninstall && (
-                <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-red-500 border-red-200 hover:bg-red-50 hover:text-red-600 gap-1.5 h-8"
-                    onClick={() => setConfirmUninstall(true)}
-                  >
-                    <UninstallIcon className="w-3.5 h-3.5" />
-                    卸载
-                  </Button>
-                </>
+                <button
+                  onClick={() => setConfirmUninstall(true)}
+                  className="flex items-center gap-2 rounded-xl border border-[#FECACA] bg-[#FFF5F5] hover:bg-[#FEE2E2] text-[#EF4444] text-[12px] font-semibold px-4 h-9 transition-colors"
+                >
+                  <Trash2 size={14} />
+                  卸载
+                </button>
               )}
 
               {phase === "idle" && installed && confirmUninstall && (
                 <>
-                  <Button size="sm" variant="outline" className="h-8" onClick={() => setConfirmUninstall(false)}>
-                    取消
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="gap-1.5 h-8"
-                    onClick={() => startOperation("uninstall")}
+                  <button
+                    onClick={() => setConfirmUninstall(false)}
+                    className="rounded-xl border border-[#E5E7EB] text-[#6B7280] hover:text-[#374151] hover:border-[#D1D5DB] text-[12px] font-medium px-4 h-9 transition-colors"
                   >
-                    <UninstallIcon className="w-3.5 h-3.5" />
+                    取消
+                  </button>
+                  <button
+                    onClick={() => startOperation("uninstall")}
+                    className="flex items-center gap-2 rounded-xl bg-[#EF4444] hover:bg-[#DC2626] text-white text-[12px] font-semibold px-4 h-9 transition-colors"
+                  >
+                    <Trash2 size={14} />
                     确认卸载
-                  </Button>
+                  </button>
                 </>
               )}
 
               {(phase === "done-ok" || phase === "done-err") && (
-                <Button size="sm" variant="outline" className="h-8" onClick={closeDialog}>
+                <button
+                  onClick={closeDialog}
+                  className="rounded-xl border border-[#E5E7EB] text-[#6B7280] hover:text-[#374151] hover:border-[#D1D5DB] text-[12px] font-medium px-4 h-9 transition-colors"
+                >
                   关闭
-                </Button>
+                </button>
               )}
             </div>
           </div>
