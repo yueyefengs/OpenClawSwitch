@@ -52,10 +52,13 @@ export default function ProvidersPage({
     modelCount: getProviderModelCount(config, provider.key),
   }))
 
-  // Filter by search query
-  const filteredProviders = providersWithState.filter(provider =>
-    provider.name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  // Filter by connection status (only show connected providers)
+  // Then filter by search query
+  const filteredProviders = providersWithState
+    .filter(provider => provider.isConnected)
+    .filter(provider =>
+      provider.name.toLowerCase().includes(searchQuery.toLowerCase())
+    )
 
   function handleProviderClick(providerKey: string) {
     if (onSelectProvider) {
