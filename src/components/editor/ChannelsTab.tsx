@@ -52,7 +52,67 @@ function patchTelegram(
   })
 }
 
-export default function ChannelsTab({ config, onChange }: Props) {
+export default function ChannelsTab(_props: Props) {
+  // Navigation state management
+  const [view, setView] = useState<"list" | "detail">("list")
+  const [selectedChannel, setSelectedChannel] = useState<string>("")
+
+  // Current view: Channels List
+  if (view === "list") {
+    return (
+      <div className="space-y-4 p-4">
+        <h2 className="text-lg font-semibold">Channels List (Coming Soon)</h2>
+        <p className="text-sm text-muted-foreground">
+          选择一个渠道来配置其设置
+        </p>
+        <div className="space-y-2">
+          <Button
+            onClick={() => {
+              setSelectedChannel("telegram")
+              setView("detail")
+            }}
+            variant="outline"
+            className="w-full justify-start"
+          >
+            Telegram
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Current view: Channel Detail
+  if (view === "detail") {
+    return (
+      <div className="space-y-4 p-4">
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => {
+              setView("list")
+              setSelectedChannel("")
+            }}
+            variant="ghost"
+            size="sm"
+          >
+            ← 返回
+          </Button>
+          <h2 className="text-lg font-semibold">{selectedChannel} Detail (Coming Soon)</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          渠道详情页面将在这里显示
+        </p>
+      </div>
+    )
+  }
+
+  // Fallback (should not reach here)
+  return null
+}
+
+// ============================================================================
+// Original Telegram Configuration Logic (to be extracted into TelegramDetailPage in Task 3)
+// ============================================================================
+function OriginalChannelsTabLogic({ config, onChange }: Props) {
   const tg = config.channels?.telegram ?? {}
   const accounts = tg.accounts ?? {}
   const [visibleTokens, setVisibleTokens] = useState<Record<string, boolean>>({})
@@ -306,3 +366,6 @@ export default function ChannelsTab({ config, onChange }: Props) {
     </div>
   )
 }
+
+// Keep reference to avoid TS error until Task 3 implementation
+void OriginalChannelsTabLogic
