@@ -1,11 +1,12 @@
 import { useState } from "react"
-import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react"
+import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronUp, ArrowLeft } from "lucide-react"
 import { Input } from "../ui/input"
 import { Label } from "../ui/label"
 import { Button } from "../ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { cn } from "../../lib/utils"
 import type { OpenclawConfig, ProviderConfig, ProviderModel } from "../../types"
+import ProvidersPage from "./ProvidersPage"
 
 interface Props {
   config: Partial<OpenclawConfig>
@@ -387,78 +388,134 @@ function ProviderCard({ name, prov, onUpdate, onRemove, onRename, onApplyPreset 
   )
 }
 
-// ─── ProvidersTab ─────────────────────────────────────────────────────────────
+// ─── Detail View: Edit Single Provider ─────────────────────────────────────────
 
-export default function ProvidersTab({ config, onChange }: Props) {
+interface DetailViewProps {
+  config: Partial<OpenclawConfig>
+  onChange: (config: Partial<OpenclawConfig>) => void
+  selectedProviderKey: string
+  onBack: () => void
+}
+
+function ProviderDetailView({
+  config,
+  onChange,
+  selectedProviderKey,
+  onBack,
+}: DetailViewProps) {
   const providers = config.models?.providers ?? {}
 
-  function updateProvider(name: string, patch: Partial<ProviderConfig>) {
+  // Find the provider with the matching key (config key might differ from preset key)
+  const providerEntries = Object.entries(providers)
+  const [providerName, providerConfig] = providerEntries.find(
+    ([, prov]) => prov.api && PRESET_MAP[selectedProviderKey]?.api === prov.api
+  ) ?? [selectedProviderKey, providers[selectedProviderKey]]
+
+  if (!providerConfig) {
+    return (
+      <div className="space-y-3 p-4">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors mb-4"
+        >
+          <ArrowLeft size={16} /> 返回
+        </button>
+        <div className="text-center py-8">
+          <p className="text-gray-500">Provider 配置未找到</p>
+        </div>
+      </div>
+    )
+  }
+
+  function updateProvider(patch: Partial<ProviderConfig>) {
     onChange({
       ...config,
       models: {
         ...config.models,
         providers: {
           ...providers,
-          [name]: { ...providers[name], ...patch },
+          [providerName]: { ...providerConfig, ...patch },
         },
       },
     })
   }
 
-  function renameProvider(oldName: string, newName: string) {
-    if (oldName === newName || !newName.trim()) return
+  function renameProvider(newName: string) {
+    if (providerName === newName || !newName.trim()) return
     const next: Record<string, ProviderConfig> = {}
     for (const [k, v] of Object.entries(providers)) {
-      next[k === oldName ? newName : k] = v
+      next[k === providerName ? newName : k] = v
     }
     onChange({ ...config, models: { ...config.models, providers: next } })
   }
 
-  // Rename + apply config patch atomically (avoids stale-closure double-onChange bug)
-  function applyPresetToProvider(oldName: string, newName: string, patch: Partial<ProviderConfig>) {
+  function applyPresetToProvider(newName: string, patch: Partial<ProviderConfig>) {
     const next: Record<string, ProviderConfig> = {}
     for (const [k, v] of Object.entries(providers)) {
-      next[k === oldName ? newName : k] = k === oldName ? { ...v, ...patch } : v
+      next[k === providerName ? newName : k] = k === providerName ? { ...v, ...patch } : v
     }
     onChange({ ...config, models: { ...config.models, providers: next } })
   }
 
-  function addProvider() {
-    const key = `provider_${Date.now()}`
-    onChange({
-      ...config,
-      models: {
-        ...config.models,
-        providers: { ...providers, [key]: { models: [] } },
-      },
-    })
-  }
-
-  function removeProvider(name: string) {
+  function removeProvider() {
     const next = { ...providers }
-    delete next[name]
+    delete next[providerName]
     onChange({ ...config, models: { ...config.models, providers: next } })
+    onBack()
   }
 
   return (
     <div className="space-y-3 p-4">
-      {Object.entries(providers).map(([name, prov]) => (
-        <ProviderCard
-          key={name}
-          name={name}
-          prov={prov}
-          onUpdate={patch => updateProvider(name, patch)}
-          onRemove={() => removeProvider(name)}
-          onRename={newName => renameProvider(name, newName)}
-          onApplyPreset={(newName, patch) => applyPresetToProvider(name, newName, patch)}
-        />
-      ))}
       <button
-        onClick={addProvider}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 py-3 text-sm text-gray-400 hover:border-blue-300 hover:text-blue-500 transition-colors"
+        onClick={onBack}
+        className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors mb-4"
       >
-        <Plus size={14} /> 添加 Provider
+        <ArrowLeft size={16} /> 返回
       </button>
+      <ProviderCard
+        name={providerName}
+        prov={providerConfig}
+        onUpdate={updateProvider}
+        onRemove={removeProvider}
+        onRename={renameProvider}
+        onApplyPreset={applyPresetToProvider}
+      />
     </div>
+  )
+}
+
+// ─── ProvidersTab (Main Component) ────────────────────────────────────────────
+
+export default function ProvidersTab({ config, onChange }: Props) {
+  const [view, setView] = useState<"list" | "detail">("list")
+  const [selectedProviderKey, setSelectedProviderKey] = useState<string>("")
+
+  function handleSelectProvider(providerKey: string) {
+    setSelectedProviderKey(providerKey)
+    setView("detail")
+  }
+
+  function handleBack() {
+    setView("list")
+    setSelectedProviderKey("")
+  }
+
+  if (view === "detail") {
+    return (
+      <ProviderDetailView
+        config={config}
+        onChange={onChange}
+        selectedProviderKey={selectedProviderKey}
+        onBack={handleBack}
+      />
+    )
+  }
+
+  return (
+    <ProvidersPage
+      config={config}
+      onChange={onChange}
+      onSelectProvider={handleSelectProvider}
+    />
   )
 }
