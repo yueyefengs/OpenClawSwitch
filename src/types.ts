@@ -41,6 +41,31 @@ export interface TelegramChannelConfig {
   accounts?: Record<string, TelegramAccountConfig>
 }
 
+export interface FeishuAccountConfig {
+  appId?: string
+  appSecret?: string
+  botName?: string
+  enabled?: boolean
+}
+
+export interface FeishuChannelConfig {
+  enabled?: boolean
+  domain?: "feishu" | "lark"
+  defaultAccount?: string
+  accounts?: Record<string, FeishuAccountConfig>
+  // Global settings
+  dmPolicy?: "pairing" | "allowlist" | "open" | "disabled"
+  allowFrom?: string[] // open_id list
+  groupPolicy?: "open" | "allowlist" | "disabled"
+  groupAllowFrom?: string[] // group_id list
+  // Quota optimization
+  typingIndicator?: boolean
+  resolveSenderNames?: boolean
+  // Streaming
+  streaming?: boolean
+  blockStreaming?: boolean
+}
+
 export interface GatewayConfig {
   mode?: "local" | "remote"
   auth?: { token?: string }
