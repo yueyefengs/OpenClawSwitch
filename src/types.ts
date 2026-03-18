@@ -137,6 +137,7 @@ export interface OpenclawConfig {
   gateway?: GatewayConfig
   channels?: {
     telegram?: TelegramChannelConfig
+    feishu?: FeishuChannelConfig
   }
   bindings?: BindingConfig[]
 }
