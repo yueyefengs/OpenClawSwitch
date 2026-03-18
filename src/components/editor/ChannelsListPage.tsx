@@ -27,6 +27,9 @@ function getChannelStatus(config: Partial<OpenclawConfig>, channelId: string): b
   if (channelId === "telegram") {
     return config.channels?.telegram?.enabled ?? false
   }
+  if (channelId === "feishu") {
+    return config.channels?.feishu?.enabled ?? false
+  }
   // Other channels are not enabled yet
   return false
 }
