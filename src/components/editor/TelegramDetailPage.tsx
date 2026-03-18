@@ -6,6 +6,7 @@ import { Button } from "../ui/button"
 import { Switch } from "../ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import type { OpenclawConfig, TelegramChannelConfig, TelegramAccountConfig } from "../../types"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
 
 interface Props {
   config: Partial<OpenclawConfig>
@@ -58,6 +59,7 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
   const accounts = tg.accounts ?? {}
   const [visibleTokens, setVisibleTokens] = useState<Record<string, boolean>>({})
   const [allowFromInput, setAllowFromInput] = useState("")
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("")
 
   function updateAccount(id: string, patch: Partial<TelegramAccountConfig>) {
     patchTelegram(config, {
@@ -78,14 +80,6 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
     patchTelegram(config, { accounts: next }, onChange)
   }
 
-  function renameAccount(oldId: string, newId: string) {
-    if (oldId === newId || !newId.trim()) return
-    const next: Record<string, TelegramAccountConfig> = {}
-    for (const [k, v] of Object.entries(accounts)) {
-      next[k === oldId ? newId : k] = v
-    }
-    patchTelegram(config, { accounts: next }, onChange)
-  }
 
   function updateBinding(accountId: string, agentId: string) {
     const existing = (config.bindings ?? []).filter(
@@ -117,206 +111,276 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
     (tg.allowFrom ?? []).length === 0
 
   return (
-    <div className="space-y-6 p-4">
+    <div className="flex flex-col h-full bg-gray-100">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <Button
-          onClick={onBack}
-          variant="ghost"
-          size="sm"
-          className="gap-2"
-        >
-          <ChevronLeft size={16} />
-          返回
-        </Button>
-        <h2 className="text-lg font-semibold">Telegram</h2>
-      </div>
-
-      {/* Telegram top-level settings */}
-      <div className="border rounded-lg p-4 space-y-4">
-        <h3 className="font-medium text-sm">Telegram 全局设置</h3>
-        <div className="flex items-center gap-3">
-          <Switch
-            checked={tg.enabled ?? false}
-            onCheckedChange={v => patchTelegram(config, { enabled: v }, onChange)}
-          />
-          <Label>启用 Telegram</Label>
-        </div>
-        <div className="space-y-2">
-          <Label>代理</Label>
-          <Input
-            value={tg.proxy ?? ""}
-            onChange={e => patchTelegram(config, { proxy: e.target.value }, onChange)}
-            placeholder="http://127.0.0.1:7897"
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>DM Policy</Label>
-            <Select
-              value={tg.dmPolicy ?? undefined}
-              onValueChange={v => patchTelegram(config, { dmPolicy: v as TelegramChannelConfig["dmPolicy"] }, onChange)}
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onBack}
+              className="p-1 hover:bg-gray-100 rounded"
             >
-              <SelectTrigger><SelectValue placeholder="选择策略" /></SelectTrigger>
-              <SelectContent>
-                {DM_POLICIES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-              </SelectContent>
-            </Select>
+              <ChevronLeft size={20} />
+            </button>
+            <h2 className="text-lg font-semibold">Telegram</h2>
           </div>
-          <div className="space-y-2">
-            <Label>Group Policy</Label>
-            <Select
-              value={tg.groupPolicy ?? undefined}
-              onValueChange={v => patchTelegram(config, { groupPolicy: v as TelegramChannelConfig["groupPolicy"] }, onChange)}
-            >
-              <SelectTrigger><SelectValue placeholder="选择策略" /></SelectTrigger>
-              <SelectContent>
-                {DM_POLICIES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Label>Streaming</Label>
-          <Select
-            value={streamingToStr(tg.streaming)}
-            onValueChange={v => patchTelegram(config, { streaming: strToStreaming(v) }, onChange)}
+          <button
+            onClick={addAccount}
+            className="p-2 hover:bg-gray-100 rounded"
+            title="Add new bot account"
           >
-            <SelectTrigger><SelectValue placeholder="选择模式" /></SelectTrigger>
-            <SelectContent>
-              {STREAMING_OPTS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Global allowFrom */}
-        <div className="space-y-2">
-          <Label>Allow From（全局白名单 TG 用户 ID）</Label>
-          {needsAllowFrom && (
-            <p className="text-xs text-destructive">
-              Policy=allowlist 时需至少填一个用户 ID
-            </p>
-          )}
-          <div className="flex flex-wrap gap-1">
-            {(tg.allowFrom ?? []).map(uid => (
-              <span
-                key={uid}
-                className="inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-xs font-mono"
-              >
-                {uid}
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-destructive"
-                  onClick={() => removeAllowFrom(uid)}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Input
-              className="h-8 text-xs"
-              type="number"
-              value={allowFromInput}
-              onChange={e => setAllowFromInput(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && addAllowFrom()}
-              onBlur={addAllowFrom}
-              placeholder="TG 用户 ID（如 6292151698）"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 px-3 shrink-0"
-              onClick={addAllowFrom}
-              disabled={!allowFromInput.trim()}
-            >
-              <Plus size={12} />
-            </Button>
-          </div>
+            <Plus size={20} />
+          </button>
         </div>
       </div>
 
-      {/* Accounts */}
-      <div className="space-y-3">
-        <h3 className="font-medium text-sm">账号列表</h3>
-        {Object.entries(accounts).map(([id, acc]) => (
-          <div key={id} className="border rounded-lg p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <Input
-                defaultValue={id}
-                className="font-medium font-mono text-sm"
-                onBlur={e => renameAccount(id, e.target.value)}
-                placeholder="账号 ID（如 default 或数字 ID）"
-              />
-              <Button variant="ghost" size="icon" onClick={() => removeAccount(id)}>
-                <Trash2 size={14} />
-              </Button>
-            </div>
-            <div className="space-y-2">
-              <Label>Bot Token</Label>
-              <div className="flex gap-2">
-                <Input
-                  type={visibleTokens[id] ? "text" : "password"}
-                  value={acc.botToken ?? ""}
-                  onChange={e => updateAccount(id, { botToken: e.target.value })}
-                  placeholder="1234567890:ABCdef..."
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setVisibleTokens(v => ({ ...v, [id]: !v[id] }))}
-                >
-                  {visibleTokens[id] ? <EyeOff size={14} /> : <Eye size={14} />}
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>绑定 Agent</Label>
-              <Select
-                value={config.bindings?.find(b => b.match.channel === "telegram" && b.match.accountId === id)?.agentId ?? ""}
-                onValueChange={v => updateBinding(id, v)}
-              >
-                <SelectTrigger><SelectValue placeholder="未绑定" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">未绑定</SelectItem>
-                  {(config.agents?.list ?? []).map(a => (
-                    <SelectItem key={a.id} value={a.id}>{a.name ?? a.id}</SelectItem>
+      {/* Tabs for different sections */}
+      <div className="bg-white border-b border-gray-200">
+        <Tabs defaultValue="bots" className="w-full">
+          <TabsList className="justify-start border-0 rounded-none bg-transparent px-6 gap-6 h-12">
+            <TabsTrigger value="bots" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent">
+              Bots
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent">
+              Settings
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Bots Tab */}
+          <TabsContent value="bots" className="flex-1 overflow-hidden">
+            <div className="grid grid-cols-3 gap-3 p-4 h-[calc(100%-56px)] overflow-hidden">
+              {/* Left sidebar - Bot list */}
+              <div className="border rounded-lg bg-white overflow-y-auto">
+                <div className="sticky top-0 bg-white border-b p-3">
+                  <p className="text-xs font-semibold text-gray-600">Telegram Bots</p>
+                </div>
+                <div className="space-y-1 p-2">
+                  {Object.entries(accounts).map(([id]) => (
+                    <button
+                      key={id}
+                      onClick={() => setSelectedAccountId(id)}
+                      className={`w-full p-2 rounded text-left text-sm transition-colors ${
+                        selectedAccountId === id
+                          ? "bg-blue-50 text-blue-700 border border-blue-200"
+                          : "hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700 flex-shrink-0">
+                          {id.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="truncate">
+                          <p className="text-xs font-mono">{id}</p>
+                        </div>
+                      </div>
+                    </button>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>DM Policy</Label>
-                <Select
-                  value={acc.dmPolicy ?? undefined}
-                  onValueChange={v => updateAccount(id, { dmPolicy: v as TelegramAccountConfig["dmPolicy"] })}
-                >
-                  <SelectTrigger><SelectValue placeholder="继承全局" /></SelectTrigger>
-                  <SelectContent>
-                    {DM_POLICIES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                  {Object.keys(accounts).length === 0 && (
+                    <p className="text-xs text-gray-500 p-2">No bots yet</p>
+                  )}
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Group Policy</Label>
-                <Select
-                  value={acc.groupPolicy ?? undefined}
-                  onValueChange={v => updateAccount(id, { groupPolicy: v as TelegramAccountConfig["groupPolicy"] })}
-                >
-                  <SelectTrigger><SelectValue placeholder="继承全局" /></SelectTrigger>
-                  <SelectContent>
-                    {DM_POLICIES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+
+              {/* Right side - Selected bot details */}
+              <div className="col-span-2 border rounded-lg bg-white overflow-y-auto">
+                {selectedAccountId && accounts[selectedAccountId] ? (
+                  <div className="p-4 space-y-4">
+                    <div className="flex items-center justify-between pb-4 border-b">
+                      <h3 className="font-semibold">{selectedAccountId}</h3>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeAccount(selectedAccountId)}
+                      >
+                        <Trash2 size={16} />
+                      </Button>
+                    </div>
+
+                    {/* Bot Token */}
+                    <div className="space-y-2">
+                      <Label className="text-xs">Bot Token</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type={visibleTokens[selectedAccountId] ? "text" : "password"}
+                          value={accounts[selectedAccountId].botToken ?? ""}
+                          onChange={e => updateAccount(selectedAccountId, { botToken: e.target.value })}
+                          placeholder="1234567890:ABCdef..."
+                          className="text-xs"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setVisibleTokens(v => ({ ...v, [selectedAccountId]: !v[selectedAccountId] }))}
+                        >
+                          {visibleTokens[selectedAccountId] ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Agent binding */}
+                    <div className="space-y-2">
+                      <Label className="text-xs">Agent Binding</Label>
+                      <Select
+                        value={config.bindings?.find(b => b.match.channel === "telegram" && b.match.accountId === selectedAccountId)?.agentId ?? ""}
+                        onValueChange={v => updateBinding(selectedAccountId, v)}
+                      >
+                        <SelectTrigger className="text-xs"><SelectValue placeholder="Not bound" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Not bound</SelectItem>
+                          {(config.agents?.list ?? []).map(a => (
+                            <SelectItem key={a.id} value={a.id}>{a.name ?? a.id}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Policies */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label className="text-xs">DM Policy</Label>
+                        <Select
+                          value={accounts[selectedAccountId].dmPolicy ?? ""}
+                          onValueChange={v => updateAccount(selectedAccountId, { dmPolicy: v as TelegramAccountConfig["dmPolicy"] })}
+                        >
+                          <SelectTrigger className="text-xs"><SelectValue placeholder="Inherit" /></SelectTrigger>
+                          <SelectContent>
+                            {DM_POLICIES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs">Group Policy</Label>
+                        <Select
+                          value={accounts[selectedAccountId].groupPolicy ?? ""}
+                          onValueChange={v => updateAccount(selectedAccountId, { groupPolicy: v as TelegramAccountConfig["groupPolicy"] })}
+                        >
+                          <SelectTrigger className="text-xs"><SelectValue placeholder="Inherit" /></SelectTrigger>
+                          <SelectContent>
+                            {DM_POLICIES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-500">
+                    <p className="text-sm">Select a bot to view details</p>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        ))}
-        <Button variant="outline" onClick={addAccount} className="w-full gap-2">
-          <Plus size={14} /> 添加账号
-        </Button>
+          </TabsContent>
+
+          {/* Settings Tab */}
+          <TabsContent value="settings" className="p-4 overflow-y-auto">
+            <div className="max-w-2xl space-y-6">
+              {/* Telegram top-level settings */}
+              <div className="border rounded-lg p-4 space-y-4">
+                <h3 className="font-medium text-sm">Global Settings</h3>
+                <div className="flex items-center gap-3">
+                  <Switch
+                    checked={tg.enabled ?? false}
+                    onCheckedChange={v => patchTelegram(config, { enabled: v }, onChange)}
+                  />
+                  <Label>Enable Telegram</Label>
+                </div>
+                <div className="space-y-2">
+                  <Label>Proxy</Label>
+                  <Input
+                    value={tg.proxy ?? ""}
+                    onChange={e => patchTelegram(config, { proxy: e.target.value }, onChange)}
+                    placeholder="http://127.0.0.1:7897"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>DM Policy</Label>
+                    <Select
+                      value={tg.dmPolicy ?? ""}
+                      onValueChange={v => patchTelegram(config, { dmPolicy: v as TelegramChannelConfig["dmPolicy"] }, onChange)}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Select policy" /></SelectTrigger>
+                      <SelectContent>
+                        {DM_POLICIES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Group Policy</Label>
+                    <Select
+                      value={tg.groupPolicy ?? ""}
+                      onValueChange={v => patchTelegram(config, { groupPolicy: v as TelegramChannelConfig["groupPolicy"] }, onChange)}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Select policy" /></SelectTrigger>
+                      <SelectContent>
+                        {DM_POLICIES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Streaming</Label>
+                  <Select
+                    value={streamingToStr(tg.streaming)}
+                    onValueChange={v => patchTelegram(config, { streaming: strToStreaming(v) }, onChange)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Select mode" /></SelectTrigger>
+                    <SelectContent>
+                      {STREAMING_OPTS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Global allowFrom */}
+                <div className="space-y-2">
+                  <Label>Allow From（Global User IDs）</Label>
+                  {needsAllowFrom && (
+                    <p className="text-xs text-red-600">
+                      When policy is allowlist, you must add at least one user ID
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-1">
+                    {(tg.allowFrom ?? []).map(uid => (
+                      <span
+                        key={uid}
+                        className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs font-mono"
+                      >
+                        {uid}
+                        <button
+                          type="button"
+                          className="text-gray-600 hover:text-red-600"
+                          onClick={() => removeAllowFrom(uid)}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      className="h-8 text-xs"
+                      type="number"
+                      value={allowFromInput}
+                      onChange={e => setAllowFromInput(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && addAllowFrom()}
+                      onBlur={addAllowFrom}
+                      placeholder="User ID (e.g., 6292151698)"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3 shrink-0"
+                      onClick={addAllowFrom}
+                      disabled={!allowFromInput.trim()}
+                    >
+                      <Plus size={12} />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   )
