@@ -2,6 +2,7 @@ import { useState } from "react"
 import type { OpenclawConfig } from "../../types"
 import ChannelsListPage from "./ChannelsListPage"
 import TelegramDetailPage from "./TelegramDetailPage"
+import FeishuDetailPage from "./FeishuDetailPage"
 
 interface Props {
   config: Partial<OpenclawConfig>
@@ -29,6 +30,17 @@ export default function ChannelsTab(props: Props) {
   if (nav.view === "detail" && nav.selectedChannel === "telegram") {
     return (
       <TelegramDetailPage
+        config={props.config}
+        onChange={props.onChange}
+        onBack={nav.back}
+      />
+    )
+  }
+
+  // Show Feishu detail page
+  if (nav.view === "detail" && nav.selectedChannel === "feishu") {
+    return (
+      <FeishuDetailPage
         config={props.config}
         onChange={props.onChange}
         onBack={nav.back}
