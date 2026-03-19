@@ -575,6 +575,59 @@ pub fn install_openclaw(window: tauri::WebviewWindow) -> Result<(), CommandError
     Ok(())
 }
 
+/// Read the live openclaw.json and return its parsed content.
+/// Used by the frontend to import agents (or other config) into a profile.
+#[tauri::command]
+pub fn read_live_config(state: State<'_, AppState>) -> Result<serde_json::Value, CommandError> {
+    use crate::services::config_parser;
+    let path = &state.live_config_path;
+    if !path.exists() {
+        return Ok(serde_json::json!({}));
+    }
+    config_parser::read_config(path)
+        .map_err(|e| CommandError(format!("读取配置失败: {}", e)))
+}
+
+/// Create an agent via `openclaw agents add <id> --workspace <path>`.
+///
+/// Always creates the agentDir and workspace directories on disk first.
+/// If openclaw is not installed, still succeeds (directories-only creation).
+/// The side-effect of openclaw modifying the live openclaw.json is intentionally
+/// ignored — OpenclawSwitch manages profiles independently.
+#[tauri::command]
+pub fn create_agent_via_cli(
+    agent_id: String,
+    workspace: String,
+    agent_dir: String,
+) -> Result<String, CommandError> {
+    let workspace_path = expand_tilde(&workspace);
+    let agent_dir_path = expand_tilde(&agent_dir);
+
+    std::fs::create_dir_all(&agent_dir_path)
+        .map_err(|e| CommandError(format!("创建 agent 目录失败: {}", e)))?;
+    std::fs::create_dir_all(&workspace_path)
+        .map_err(|e| CommandError(format!("创建 workspace 目录失败: {}", e)))?;
+
+    let Some(bin) = find_openclaw() else {
+        return Ok("目录已创建（openclaw 未安装，跳过 CLI 初始化）".to_string());
+    };
+
+    let output = std::process::Command::new(bin)
+        .args(["agents", "add", &agent_id, "--workspace", &workspace_path.to_string_lossy()])
+        .env("PATH", augmented_path())
+        .output()
+        .map_err(|e| CommandError(format!("执行 openclaw 失败: {}", e)))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let msg = if !stderr.is_empty() { stderr } else { stdout };
+        Err(CommandError(format!("openclaw agents add 失败: {}", msg.trim())))
+    }
+}
+
 #[tauri::command]
 pub fn uninstall_openclaw(window: tauri::WebviewWindow) -> Result<(), CommandError> {
     let bin = match find_openclaw() {

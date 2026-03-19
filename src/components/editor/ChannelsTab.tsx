@@ -3,6 +3,9 @@ import type { OpenclawConfig } from "../../types"
 import ChannelsListPage from "./ChannelsListPage"
 import TelegramDetailPage from "./TelegramDetailPage"
 import FeishuDetailPage from "./FeishuDetailPage"
+import DiscordDetailPage from "./DiscordDetailPage"
+import DingdingDetailPage from "./DingdingDetailPage"
+import WecomDetailPage from "./WecomDetailPage"
 
 interface Props {
   config: Partial<OpenclawConfig>
@@ -41,6 +44,36 @@ export default function ChannelsTab(props: Props) {
   if (nav.view === "detail" && nav.selectedChannel === "feishu") {
     return (
       <FeishuDetailPage
+        config={props.config}
+        onChange={props.onChange}
+        onBack={nav.back}
+      />
+    )
+  }
+
+  if (nav.view === "detail" && nav.selectedChannel === "discord") {
+    return (
+      <DiscordDetailPage
+        config={props.config}
+        onChange={props.onChange}
+        onBack={nav.back}
+      />
+    )
+  }
+
+  if (nav.view === "detail" && nav.selectedChannel === "dingding") {
+    return (
+      <DingdingDetailPage
+        config={props.config}
+        onChange={props.onChange}
+        onBack={nav.back}
+      />
+    )
+  }
+
+  if (nav.view === "detail" && nav.selectedChannel === "wecom") {
+    return (
+      <WecomDetailPage
         config={props.config}
         onChange={props.onChange}
         onBack={nav.back}

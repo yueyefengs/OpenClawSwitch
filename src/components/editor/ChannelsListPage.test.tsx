@@ -80,6 +80,69 @@ describe("ChannelsListPage", () => {
     expect(disabledLabels.length).toBeGreaterThan(0)
   })
 
+  it("shows enabled status for discord when config.channels.discord.enabled is true", () => {
+    const config: Partial<OpenclawConfig> = {
+      channels: {
+        discord: {
+          enabled: true,
+        },
+      },
+    }
+    const mockSelectChannel = vi.fn()
+
+    render(
+      <ChannelsListPage
+        config={config}
+        onSelectChannel={mockSelectChannel}
+      />
+    )
+
+    const enabledLabels = screen.getAllByText("已启用")
+    expect(enabledLabels.length).toBeGreaterThan(0)
+  })
+
+  it("shows enabled status for dingding when config.channels.dingding.enabled is true", () => {
+    const config: Partial<OpenclawConfig> = {
+      channels: {
+        dingding: {
+          enabled: true,
+        },
+      },
+    }
+    const mockSelectChannel = vi.fn()
+
+    render(
+      <ChannelsListPage
+        config={config}
+        onSelectChannel={mockSelectChannel}
+      />
+    )
+
+    const enabledLabels = screen.getAllByText("已启用")
+    expect(enabledLabels.length).toBeGreaterThan(0)
+  })
+
+  it("shows enabled status for wecom when config.channels.wecom.enabled is true", () => {
+    const config: Partial<OpenclawConfig> = {
+      channels: {
+        wecom: {
+          enabled: true,
+        },
+      },
+    }
+    const mockSelectChannel = vi.fn()
+
+    render(
+      <ChannelsListPage
+        config={config}
+        onSelectChannel={mockSelectChannel}
+      />
+    )
+
+    const enabledLabels = screen.getAllByText("已启用")
+    expect(enabledLabels.length).toBeGreaterThan(0)
+  })
+
   it("shows disabled status for all other channels", () => {
     const config: Partial<OpenclawConfig> = {}
     const mockSelectChannel = vi.fn()

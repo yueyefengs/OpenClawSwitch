@@ -3,10 +3,10 @@ import { Eye, EyeOff, Plus, Trash2, ChevronLeft } from "lucide-react"
 import { Input } from "../ui/input"
 import { Label } from "../ui/label"
 import { Button } from "../ui/button"
-import { Switch } from "../ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
 import type { OpenclawConfig, FeishuChannelConfig, FeishuAccountConfig } from "../../types"
+import ToggleCard from "./ToggleCard"
 
 interface Props {
   config: Partial<OpenclawConfig>
@@ -101,7 +101,7 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
     <div className="flex flex-col h-full bg-gray-100">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
               onClick={onBack}
@@ -109,15 +109,24 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
             >
               <ChevronLeft size={20} />
             </button>
-            <h2 className="text-lg font-semibold">Feishu</h2>
+            <h2 className="text-lg font-semibold">飞书机器人</h2>
           </div>
-          <button
-            onClick={addAccount}
-            className="p-2 hover:bg-gray-100 rounded"
-            title="Add new account"
-          >
-            <Plus size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <ToggleCard
+              checked={fs.enabled ?? false}
+              onCheckedChange={v => patchFeishu(config, { enabled: v }, onChange)}
+              title="飞书频道"
+              description="启用后会接收飞书或 Lark 消息"
+              className="min-w-[220px]"
+            />
+            <button
+              onClick={addAccount}
+              className="p-2 hover:bg-gray-100 rounded"
+              title="新增账号"
+            >
+              <Plus size={20} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -126,10 +135,10 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
         <Tabs defaultValue="accounts" className="w-full">
           <TabsList className="justify-start border-0 rounded-none bg-transparent px-6 gap-6 h-12">
             <TabsTrigger value="accounts" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent">
-              Accounts
+              账号
             </TabsTrigger>
             <TabsTrigger value="settings" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent">
-              Settings
+              设置
             </TabsTrigger>
           </TabsList>
 
@@ -139,7 +148,7 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
               {/* Left sidebar - Account list */}
               <div className="border rounded-lg bg-white overflow-y-auto">
                 <div className="sticky top-0 bg-white border-b p-3">
-                  <p className="text-xs font-semibold text-gray-600">Feishu Accounts</p>
+                  <p className="text-xs font-semibold text-gray-600">飞书账号列表</p>
                 </div>
                 <div className="space-y-1 p-2">
                   {Object.entries(accounts).map(([id]) => (
@@ -163,7 +172,7 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
                     </button>
                   ))}
                   {Object.keys(accounts).length === 0 && (
-                    <p className="text-xs text-gray-500 p-2">No accounts yet</p>
+                    <p className="p-2 text-xs text-gray-500">还没有账号</p>
                   )}
                 </div>
               </div>
@@ -185,7 +194,7 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
 
                     {/* App ID */}
                     <div className="space-y-2">
-                      <Label className="text-xs">App ID</Label>
+                      <Label className="text-xs">应用 ID</Label>
                       <div className="flex gap-2">
                         <Input
                           type="text"
@@ -210,7 +219,7 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
 
                     {/* App Secret */}
                     <div className="space-y-2">
-                      <Label className="text-xs">App Secret</Label>
+                      <Label className="text-xs">应用密钥</Label>
                       <div className="flex gap-2">
                         <Input
                           type={visibleSecrets[selectedAccountId] ? "text" : "password"}
@@ -242,7 +251,7 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
 
                     {/* Bot Name */}
                     <div className="space-y-2">
-                      <Label className="text-xs">Bot Name (Optional)</Label>
+                      <Label className="text-xs">机器人名称（可选）</Label>
                       <Input
                         type="text"
                         value={accounts[selectedAccountId].botName ?? ""}
@@ -253,17 +262,18 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
                     </div>
 
                     {/* Enabled toggle */}
-                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded">
-                      <Switch
-                        checked={accounts[selectedAccountId].enabled ?? true}
-                        onCheckedChange={v => updateAccount(selectedAccountId, { enabled: v })}
-                      />
-                      <Label className="text-xs">Enabled</Label>
-                    </div>
+                    <ToggleCard
+                      checked={accounts[selectedAccountId].enabled ?? true}
+                      onCheckedChange={v => updateAccount(selectedAccountId, { enabled: v })}
+                      title="当前飞书账号"
+                      description="关闭后仅停用这个账号，不影响其他账号"
+                      checkedLabel="账号已启用"
+                      uncheckedLabel="账号未启用"
+                    />
                   </div>
                 ) : (
                   <div className="flex items-center justify-center h-full text-gray-500">
-                    <p className="text-sm">Select an account to view details</p>
+                    <p className="text-sm">请选择一个账号查看详情</p>
                   </div>
                 )}
               </div>
@@ -275,16 +285,9 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
             <div className="max-w-2xl space-y-6">
               {/* Basic Settings */}
               <div className="border rounded-lg p-4 space-y-4">
-                <h3 className="font-medium text-sm">Basic Settings</h3>
-                <div className="flex items-center gap-3">
-                  <Switch
-                    checked={fs.enabled ?? false}
-                    onCheckedChange={v => patchFeishu(config, { enabled: v }, onChange)}
-                  />
-                  <Label>Enable Feishu</Label>
-                </div>
+                <h3 className="font-medium text-sm">基础设置</h3>
                 <div className="space-y-2">
-                  <Label>Domain</Label>
+                  <Label>服务域名</Label>
                   <Select
                     value={fs.domain ?? "feishu"}
                     onValueChange={v => patchFeishu(config, { domain: v as "feishu" | "lark" }, onChange)}
@@ -297,12 +300,12 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Default Account</Label>
+                  <Label>默认账号</Label>
                   <Select
                     value={fs.defaultAccount ?? ""}
                     onValueChange={v => patchFeishu(config, { defaultAccount: v }, onChange)}
                   >
-                    <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="选择账号" /></SelectTrigger>
                     <SelectContent>
                       {Object.keys(accounts).map(id => (
                         <SelectItem key={id} value={id}>{id}</SelectItem>
@@ -314,9 +317,9 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
 
               {/* DM Policy */}
               <div className="border rounded-lg p-4 space-y-4">
-                <h3 className="font-medium text-sm">DM Policy</h3>
+                <h3 className="font-medium text-sm">私聊策略</h3>
                 <div className="space-y-2">
-                  <Label>Policy</Label>
+                  <Label>策略</Label>
                   <Select
                     value={fs.dmPolicy ?? "pairing"}
                     onValueChange={v => patchFeishu(config, { dmPolicy: v as any }, onChange)}
@@ -330,8 +333,8 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
 
                 {fs.dmPolicy !== "disabled" && (
                   <div className="space-y-2">
-                    <Label>Allow From (Open IDs)</Label>
-                    {needsAllowFrom && <p className="text-xs text-red-600">Allowlist policy requires at least one user</p>}
+                    <Label>允许用户列表（Open ID）</Label>
+                    {needsAllowFrom && <p className="text-xs text-red-600">白名单模式至少需要一个用户</p>}
                     <div className="flex flex-wrap gap-1">
                       {(fs.allowFrom ?? []).map(uid => (
                         <span key={uid} className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs font-mono">
@@ -359,9 +362,9 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
 
               {/* Group Policy */}
               <div className="border rounded-lg p-4 space-y-4">
-                <h3 className="font-medium text-sm">Group Policy</h3>
+                <h3 className="font-medium text-sm">群聊策略</h3>
                 <div className="space-y-2">
-                  <Label>Policy</Label>
+                  <Label>策略</Label>
                   <Select
                     value={fs.groupPolicy ?? "open"}
                     onValueChange={v => patchFeishu(config, { groupPolicy: v as any }, onChange)}
@@ -375,7 +378,7 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
 
                 {fs.groupPolicy === "allowlist" && (
                   <div className="space-y-2">
-                    <Label>Allow From (Group IDs)</Label>
+                    <Label>允许群组列表</Label>
                     <div className="flex flex-wrap gap-1">
                       {(fs.groupAllowFrom ?? []).map(gid => (
                         <span key={gid} className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs font-mono">
@@ -403,40 +406,36 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
 
               {/* Quota Optimization */}
               <div className="border rounded-lg p-4 space-y-4">
-                <h3 className="font-medium text-sm">Quota Optimization</h3>
-                <div className="flex items-center gap-3">
-                  <Switch
-                    checked={fs.typingIndicator ?? true}
-                    onCheckedChange={v => patchFeishu(config, { typingIndicator: v }, onChange)}
-                  />
-                  <Label className="text-xs">Typing Indicator</Label>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Switch
-                    checked={fs.resolveSenderNames ?? true}
-                    onCheckedChange={v => patchFeishu(config, { resolveSenderNames: v }, onChange)}
-                  />
-                  <Label className="text-xs">Resolve Sender Names</Label>
-                </div>
+                <h3 className="font-medium text-sm">额度优化</h3>
+                <ToggleCard
+                  checked={fs.typingIndicator ?? true}
+                  onCheckedChange={v => patchFeishu(config, { typingIndicator: v }, onChange)}
+                  title="输入中提示"
+                  description="机器人回复前展示正在输入状态"
+                />
+                <ToggleCard
+                  checked={fs.resolveSenderNames ?? true}
+                  onCheckedChange={v => patchFeishu(config, { resolveSenderNames: v }, onChange)}
+                  title="解析发送者名称"
+                  description="优先展示成员名称而不是原始 ID"
+                />
               </div>
 
               {/* Streaming */}
               <div className="border rounded-lg p-4 space-y-4">
-                <h3 className="font-medium text-sm">Streaming</h3>
-                <div className="flex items-center gap-3">
-                  <Switch
-                    checked={fs.streaming ?? true}
-                    onCheckedChange={v => patchFeishu(config, { streaming: v }, onChange)}
-                  />
-                  <Label>Streaming</Label>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Switch
-                    checked={fs.blockStreaming ?? true}
-                    onCheckedChange={v => patchFeishu(config, { blockStreaming: v }, onChange)}
-                  />
-                  <Label>Block Streaming</Label>
-                </div>
+                <h3 className="font-medium text-sm">流式输出</h3>
+                <ToggleCard
+                  checked={fs.streaming ?? true}
+                  onCheckedChange={v => patchFeishu(config, { streaming: v }, onChange)}
+                  title="启用流式输出"
+                  description="模型生成时实时推送回复内容"
+                />
+                <ToggleCard
+                  checked={fs.blockStreaming ?? true}
+                  onCheckedChange={v => patchFeishu(config, { blockStreaming: v }, onChange)}
+                  title="分块流式输出"
+                  description="将流式内容按块发送，减少消息碎片"
+                />
               </div>
             </div>
           </TabsContent>

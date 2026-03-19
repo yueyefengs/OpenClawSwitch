@@ -3,10 +3,10 @@ import { Eye, EyeOff, Plus, Trash2, ChevronLeft } from "lucide-react"
 import { Input } from "../ui/input"
 import { Label } from "../ui/label"
 import { Button } from "../ui/button"
-import { Switch } from "../ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import type { OpenclawConfig, TelegramChannelConfig, TelegramAccountConfig } from "../../types"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
+import ToggleCard from "./ToggleCard"
 
 interface Props {
   config: Partial<OpenclawConfig>
@@ -114,7 +114,7 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
     <div className="flex flex-col h-full bg-gray-100">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
               onClick={onBack}
@@ -122,15 +122,24 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
             >
               <ChevronLeft size={20} />
             </button>
-            <h2 className="text-lg font-semibold">Telegram</h2>
+            <h2 className="text-lg font-semibold">Telegram 机器人</h2>
           </div>
-          <button
-            onClick={addAccount}
-            className="p-2 hover:bg-gray-100 rounded"
-            title="Add new bot account"
-          >
-            <Plus size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <ToggleCard
+              checked={tg.enabled ?? false}
+              onCheckedChange={v => patchTelegram(config, { enabled: v }, onChange)}
+              title="Telegram 频道"
+              description="启用后会接收 Telegram 消息"
+              className="min-w-[220px]"
+            />
+            <button
+              onClick={addAccount}
+              className="p-2 hover:bg-gray-100 rounded"
+              title="新增机器人账号"
+            >
+              <Plus size={20} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -139,10 +148,10 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
         <Tabs defaultValue="bots" className="w-full">
           <TabsList className="justify-start border-0 rounded-none bg-transparent px-6 gap-6 h-12">
             <TabsTrigger value="bots" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent">
-              Bots
+              机器人
             </TabsTrigger>
             <TabsTrigger value="settings" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent">
-              Settings
+              设置
             </TabsTrigger>
           </TabsList>
 
@@ -152,7 +161,7 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
               {/* Left sidebar - Bot list */}
               <div className="border rounded-lg bg-white overflow-y-auto">
                 <div className="sticky top-0 bg-white border-b p-3">
-                  <p className="text-xs font-semibold text-gray-600">Telegram Bots</p>
+                  <p className="text-xs font-semibold text-gray-600">Telegram 机器人列表</p>
                 </div>
                 <div className="space-y-1 p-2">
                   {Object.entries(accounts).map(([id]) => (
@@ -176,7 +185,7 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
                     </button>
                   ))}
                   {Object.keys(accounts).length === 0 && (
-                    <p className="text-xs text-gray-500 p-2">No bots yet</p>
+                    <p className="p-2 text-xs text-gray-500">还没有机器人</p>
                   )}
                 </div>
               </div>
@@ -198,7 +207,7 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
 
                     {/* Bot Token */}
                     <div className="space-y-2">
-                      <Label className="text-xs">Bot Token</Label>
+                      <Label className="text-xs">机器人令牌</Label>
                       <div className="flex gap-2">
                         <Input
                           type={visibleTokens[selectedAccountId] ? "text" : "password"}
@@ -219,14 +228,14 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
 
                     {/* Agent binding */}
                     <div className="space-y-2">
-                      <Label className="text-xs">Agent Binding</Label>
+                      <Label className="text-xs">绑定 Agent</Label>
                       <Select
                         value={config.bindings?.find(b => b.match.channel === "telegram" && b.match.accountId === selectedAccountId)?.agentId ?? ""}
                         onValueChange={v => updateBinding(selectedAccountId, v)}
                       >
-                        <SelectTrigger className="text-xs"><SelectValue placeholder="Not bound" /></SelectTrigger>
+                          <SelectTrigger className="text-xs"><SelectValue placeholder="未绑定" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__">Not bound</SelectItem>
+                          <SelectItem value="__none__">未绑定</SelectItem>
                           {(config.agents?.list ?? []).map(a => (
                             <SelectItem key={a.id} value={a.id}>{a.name ?? a.id}</SelectItem>
                           ))}
@@ -237,24 +246,24 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
                     {/* Policies */}
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-2">
-                        <Label className="text-xs">DM Policy</Label>
+                        <Label className="text-xs">私聊策略</Label>
                         <Select
                           value={accounts[selectedAccountId].dmPolicy ?? ""}
                           onValueChange={v => updateAccount(selectedAccountId, { dmPolicy: v as TelegramAccountConfig["dmPolicy"] })}
                         >
-                          <SelectTrigger className="text-xs"><SelectValue placeholder="Inherit" /></SelectTrigger>
+                          <SelectTrigger className="text-xs"><SelectValue placeholder="继承默认值" /></SelectTrigger>
                           <SelectContent>
                             {DM_POLICIES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-xs">Group Policy</Label>
+                        <Label className="text-xs">群聊策略</Label>
                         <Select
                           value={accounts[selectedAccountId].groupPolicy ?? ""}
                           onValueChange={v => updateAccount(selectedAccountId, { groupPolicy: v as TelegramAccountConfig["groupPolicy"] })}
                         >
-                          <SelectTrigger className="text-xs"><SelectValue placeholder="Inherit" /></SelectTrigger>
+                          <SelectTrigger className="text-xs"><SelectValue placeholder="继承默认值" /></SelectTrigger>
                           <SelectContent>
                             {DM_POLICIES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                           </SelectContent>
@@ -264,7 +273,7 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
                   </div>
                 ) : (
                   <div className="flex items-center justify-center h-full text-gray-500">
-                    <p className="text-sm">Select a bot to view details</p>
+                    <p className="text-sm">请选择一个机器人查看详情</p>
                   </div>
                 )}
               </div>
@@ -276,16 +285,9 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
             <div className="max-w-2xl space-y-6">
               {/* Telegram top-level settings */}
               <div className="border rounded-lg p-4 space-y-4">
-                <h3 className="font-medium text-sm">Global Settings</h3>
-                <div className="flex items-center gap-3">
-                  <Switch
-                    checked={tg.enabled ?? false}
-                    onCheckedChange={v => patchTelegram(config, { enabled: v }, onChange)}
-                  />
-                  <Label>Enable Telegram</Label>
-                </div>
+                <h3 className="font-medium text-sm">全局设置</h3>
                 <div className="space-y-2">
-                  <Label>Proxy</Label>
+                  <Label>代理地址</Label>
                   <Input
                     value={tg.proxy ?? ""}
                     onChange={e => patchTelegram(config, { proxy: e.target.value }, onChange)}
@@ -294,24 +296,24 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>DM Policy</Label>
+                    <Label>私聊策略</Label>
                     <Select
                       value={tg.dmPolicy ?? ""}
                       onValueChange={v => patchTelegram(config, { dmPolicy: v as TelegramChannelConfig["dmPolicy"] }, onChange)}
                     >
-                      <SelectTrigger><SelectValue placeholder="Select policy" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="选择策略" /></SelectTrigger>
                       <SelectContent>
                         {DM_POLICIES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Group Policy</Label>
+                    <Label>群聊策略</Label>
                     <Select
                       value={tg.groupPolicy ?? ""}
                       onValueChange={v => patchTelegram(config, { groupPolicy: v as TelegramChannelConfig["groupPolicy"] }, onChange)}
                     >
-                      <SelectTrigger><SelectValue placeholder="Select policy" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="选择策略" /></SelectTrigger>
                       <SelectContent>
                         {DM_POLICIES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                       </SelectContent>
@@ -319,12 +321,12 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Streaming</Label>
+                  <Label>流式输出</Label>
                   <Select
                     value={streamingToStr(tg.streaming)}
                     onValueChange={v => patchTelegram(config, { streaming: strToStreaming(v) }, onChange)}
                   >
-                    <SelectTrigger><SelectValue placeholder="Select mode" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="选择模式" /></SelectTrigger>
                     <SelectContent>
                       {STREAMING_OPTS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                     </SelectContent>
@@ -333,10 +335,10 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
 
                 {/* Global allowFrom */}
                 <div className="space-y-2">
-                  <Label>Allow From（Global User IDs）</Label>
+                  <Label>允许用户列表</Label>
                   {needsAllowFrom && (
                     <p className="text-xs text-red-600">
-                      When policy is allowlist, you must add at least one user ID
+                      白名单模式至少需要一个用户 ID
                     </p>
                   )}
                   <div className="flex flex-wrap gap-1">
@@ -364,7 +366,7 @@ export default function TelegramDetailPage({ config, onChange, onBack }: Props) 
                       onChange={e => setAllowFromInput(e.target.value)}
                       onKeyDown={e => e.key === "Enter" && addAllowFrom()}
                       onBlur={addAllowFrom}
-                      placeholder="User ID (e.g., 6292151698)"
+                      placeholder="用户 ID（例如 6292151698）"
                     />
                     <Button
                       variant="outline"

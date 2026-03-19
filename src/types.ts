@@ -66,6 +66,52 @@ export interface FeishuChannelConfig {
   blockStreaming?: boolean
 }
 
+export interface DiscordAccountConfig {
+  botName?: string
+  botToken: string
+  enabled?: boolean
+}
+
+export interface DiscordChannelConfig {
+  enabled?: boolean
+  accounts?: Record<string, DiscordAccountConfig>
+  dmPolicy?: "pairing" | "allowlist" | "open" | "disabled"
+  allowFrom?: string[]
+  groupPolicy?: "open" | "allowlist" | "disabled"
+  allowFromGuilds?: string[]
+}
+
+export interface DingdingChannelConfig {
+  enabled?: boolean
+  clientId?: string
+  clientSecret?: string
+  robotCode?: string
+  corpId?: string
+  agentId?: string
+  dmPolicy?: "pairing" | "allowlist" | "open" | "disabled"
+  allowFrom?: string[]
+  groupPolicy?: "open" | "allowlist" | "disabled"
+  groupAllowFrom?: string[]
+  requireMention?: boolean
+  messageType?: "markdown" | "card"
+  cardTemplateId?: string
+  cardTemplateKey?: string
+}
+
+export interface WecomChannelConfig {
+  enabled?: boolean
+  corpId?: string
+  agentId?: string
+  secret?: string
+  token?: string
+  encodingAESKey?: string
+  dmPolicy?: "pairing" | "allowlist" | "open" | "disabled"
+  allowFrom?: string[]
+  groupPolicy?: "open" | "allowlist" | "disabled"
+  groupAllowFrom?: string[]
+  requireMention?: boolean
+}
+
 export interface GatewayConfig {
   mode?: "local" | "remote"
   auth?: { token?: string }
@@ -138,6 +184,9 @@ export interface OpenclawConfig {
   channels?: {
     telegram?: TelegramChannelConfig
     feishu?: FeishuChannelConfig
+    discord?: DiscordChannelConfig
+    dingding?: DingdingChannelConfig
+    wecom?: WecomChannelConfig
   }
   bindings?: BindingConfig[]
 }

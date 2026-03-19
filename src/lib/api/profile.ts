@@ -39,6 +39,13 @@ export const clawhubApi = {
   uninstall: (id: string) => invoke<void>("uninstall_skill", { id }),
 }
 
+export const agentApi = {
+  create: (agentId: string, workspace: string, agentDir: string) =>
+    invoke<string>("create_agent_via_cli", { agentId, workspace, agentDir }),
+  readLiveConfig: () =>
+    invoke<OpenclawConfig>("read_live_config"),
+}
+
 export const fileApi = {
   write: (path: string, content: string) => invoke<void>("write_file", { path, content }),
   read: (path: string) => invoke<string>("read_file", { path }),

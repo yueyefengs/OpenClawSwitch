@@ -40,20 +40,61 @@ function normalizeConfig(config: Partial<OpenclawConfig>): Partial<OpenclawConfi
 function validateConfig(config: Partial<OpenclawConfig>): string[] {
   const errors: string[] = []
   const tg = config.channels?.telegram
-  if (!tg) return errors
-  const globalAllowFrom = tg.allowFrom ?? []
-  if (tg.dmPolicy === "allowlist" && globalAllowFrom.length === 0) {
-    errors.push("Telegram 全局 dmPolicy=allowlist 时需至少填一个 Allow From 用户 ID")
-  }
-  if (tg.groupPolicy === "allowlist" && globalAllowFrom.length === 0) {
-    errors.push("Telegram 全局 groupPolicy=allowlist 时需至少填一个 Allow From 用户 ID")
-  }
-  for (const [id, acc] of Object.entries(tg.accounts ?? {})) {
-    if (acc.dmPolicy === "allowlist" && globalAllowFrom.length === 0) {
-      errors.push(`Telegram 账号 ${id}：dmPolicy=allowlist 时需在全局 Allow From 中填至少一个用户 ID`)
+  if (tg) {
+    const globalAllowFrom = tg.allowFrom ?? []
+    if (tg.dmPolicy === "allowlist" && globalAllowFrom.length === 0) {
+      errors.push("Telegram 全局 dmPolicy=allowlist 时需至少填一个 Allow From 用户 ID")
     }
-    if (acc.groupPolicy === "allowlist" && globalAllowFrom.length === 0) {
-      errors.push(`Telegram 账号 ${id}：groupPolicy=allowlist 时需在全局 Allow From 中填至少一个用户 ID`)
+    if (tg.groupPolicy === "allowlist" && globalAllowFrom.length === 0) {
+      errors.push("Telegram 全局 groupPolicy=allowlist 时需至少填一个 Allow From 用户 ID")
+    }
+    for (const [id, acc] of Object.entries(tg.accounts ?? {})) {
+      if (acc.dmPolicy === "allowlist" && globalAllowFrom.length === 0) {
+        errors.push(`Telegram 账号 ${id}：dmPolicy=allowlist 时需在全局 Allow From 中填至少一个用户 ID`)
+      }
+      if (acc.groupPolicy === "allowlist" && globalAllowFrom.length === 0) {
+        errors.push(`Telegram 账号 ${id}：groupPolicy=allowlist 时需在全局 Allow From 中填至少一个用户 ID`)
+      }
+    }
+  }
+
+  const discord = config.channels?.discord
+  if (discord) {
+    if (discord.dmPolicy === "allowlist" && (discord.allowFrom ?? []).length === 0) {
+      errors.push("Discord 全局 dmPolicy=allowlist 时需至少填一个 Allow From 用户 ID")
+    }
+    if (discord.groupPolicy === "allowlist" && (discord.allowFromGuilds ?? []).length === 0) {
+      errors.push("Discord 全局 groupPolicy=allowlist 时需至少填一个 Allow From Guild ID")
+    }
+  }
+
+  const dingding = config.channels?.dingding
+  if (dingding) {
+    if (dingding.dmPolicy === "allowlist" && (dingding.allowFrom ?? []).length === 0) {
+      errors.push("钉钉 dmPolicy=allowlist 时需至少填一个 Allow From 用户 ID")
+    }
+    if (dingding.groupPolicy === "allowlist" && (dingding.groupAllowFrom ?? []).length === 0) {
+      errors.push("钉钉 groupPolicy=allowlist 时需至少填一个 Allow From 群组 ID")
+    }
+    if (dingding.messageType === "card" && !dingding.cardTemplateId?.trim()) {
+      errors.push("钉钉 messageType=card 时需填写 Card Template ID")
+    }
+  }
+
+  const wecom = config.channels?.wecom
+  if (wecom) {
+    if (wecom.dmPolicy === "allowlist" && (wecom.allowFrom ?? []).length === 0) {
+      errors.push("企业微信 dmPolicy=allowlist 时需至少填一个 Allow From 用户 ID")
+    }
+    if (wecom.groupPolicy === "allowlist" && (wecom.groupAllowFrom ?? []).length === 0) {
+      errors.push("企业微信 groupPolicy=allowlist 时需至少填一个 Allow From 群组 ID")
+    }
+    if (wecom.enabled) {
+      if (!wecom.corpId?.trim()) errors.push("企业微信启用时需填写 Corp ID")
+      if (!wecom.agentId?.trim()) errors.push("企业微信启用时需填写 Agent ID")
+      if (!wecom.secret?.trim()) errors.push("企业微信启用时需填写 Secret")
+      if (!wecom.token?.trim()) errors.push("企业微信启用时需填写 Token")
+      if (!wecom.encodingAESKey?.trim()) errors.push("企业微信启用时需填写 Encoding AES Key")
     }
   }
   return errors

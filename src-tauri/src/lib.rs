@@ -122,6 +122,8 @@ pub fn run() {
             commands::profile::check_openclaw,
             commands::profile::install_openclaw,
             commands::profile::uninstall_openclaw,
+            commands::profile::create_agent_via_cli,
+            commands::profile::read_live_config,
             commands::clawhub::search_clawhub,
             commands::clawhub::install_skill_from_clawhub,
             commands::clawhub::uninstall_skill,

@@ -1,12 +1,14 @@
-import { useState, useEffect } from "react"
-import { Plus, Trash2, Save } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
+import { Plus, Trash2, Save, Check, X, Download } from "lucide-react"
 import { Input } from "../ui/input"
 import { Label } from "../ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { cn } from "../../lib/utils"
-import { fileApi } from "../../lib/api/profile"
+import { fileApi, agentApi } from "../../lib/api/profile"
 import { toast } from "sonner"
 import type { OpenclawConfig, AgentConfig } from "../../types"
+
+const AGENT_ID_RE = /^[a-zA-Z_][a-zA-Z0-9_-]*$/
 
 interface Props {
   config: Partial<OpenclawConfig>
@@ -121,19 +123,30 @@ function AgentEditor({
     }
   }
 
-  const allTelegramAccountIds = Object.keys(config.channels?.telegram?.accounts ?? {})
   const boundBindings = (config.bindings ?? []).filter(b => b.agentId === agent.id)
-  const boundAccountIds = boundBindings
-    .filter(b => b.match.channel === "telegram")
-    .map(b => b.match.accountId)
-  const unboundAccountIds = allTelegramAccountIds.filter(id => !boundAccountIds.includes(id))
+
+  // Collect every configured channel account across all channels
+  const allChannelAccounts: { channel: string; accountId: string }[] = []
+  for (const ch of ["telegram", "feishu", "discord"] as const) {
+    for (const id of Object.keys(config.channels?.[ch]?.accounts ?? {})) {
+      allChannelAccounts.push({ channel: ch, accountId: id })
+    }
+  }
+  if (config.channels?.dingding) allChannelAccounts.push({ channel: "dingding", accountId: "default" })
+  if (config.channels?.wecom)    allChannelAccounts.push({ channel: "wecom",    accountId: "default" })
+
+  const boundKeys = new Set(boundBindings.map(b => `${b.match.channel}:${b.match.accountId}`))
+  const unboundAccounts = allChannelAccounts.filter(
+    a => !boundKeys.has(`${a.channel}:${a.accountId}`)
+  )
 
   function addBinding() {
     if (!addingFor) return
-    const existing = config.bindings ?? []
-    if (existing.some(b => b.match.channel === "telegram" && b.match.accountId === addingFor && b.agentId === agent.id)) return
+    const sep = addingFor.indexOf(":")
+    const channel = addingFor.slice(0, sep)
+    const accountId = addingFor.slice(sep + 1)
     setAddingFor("")
-    onUpdate({ __addBinding: { accountId: addingFor } } as unknown as Partial<AgentConfig>)
+    onUpdate({ __addBinding: { channel, accountId } } as unknown as Partial<AgentConfig>)
   }
 
   return (
@@ -181,21 +194,25 @@ function AgentEditor({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs text-gray-500">Workspace 目录</Label>
+              <Label className="text-xs text-gray-500">
+                Workspace 目录
+                <span className="ml-1 text-gray-400 font-normal normal-case tracking-normal">（自动生成）</span>
+              </Label>
               <Input
                 value={agent.workspace ?? ""}
-                onChange={e => onUpdate({ workspace: e.target.value })}
-                placeholder="~/.openclaw/workspace"
-                className="h-8 text-sm"
+                disabled
+                className="h-8 text-xs font-mono bg-gray-50 text-gray-500"
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs text-gray-500">Agent 目录 (agentDir)</Label>
+              <Label className="text-xs text-gray-500">
+                Agent 目录
+                <span className="ml-1 text-gray-400 font-normal normal-case tracking-normal">（自动生成）</span>
+              </Label>
               <Input
                 value={agent.agentDir ?? ""}
-                onChange={e => onUpdate({ agentDir: e.target.value })}
-                placeholder="~/.openclaw/agent"
-                className="h-8 text-sm"
+                disabled
+                className="h-8 text-xs font-mono bg-gray-50 text-gray-500"
               />
             </div>
           </div>
@@ -277,35 +294,37 @@ function AgentEditor({
       </section>
 
       {/* ─ Channel Bindings ─ */}
-      {allTelegramAccountIds.length > 0 && (
+      {allChannelAccounts.length > 0 && (
         <section className="rounded-xl border bg-white shadow-sm overflow-hidden">
           <div className="px-4 py-2.5 bg-gray-50/70 border-b text-xs font-semibold text-gray-500 uppercase tracking-wide">绑定 Channel</div>
           <div className="p-4 space-y-2">
-            {boundAccountIds.length === 0 && (
+            {boundBindings.length === 0 && (
               <p className="text-xs text-gray-400">暂无绑定</p>
             )}
-            {boundAccountIds.map(accountId => (
-              <div key={accountId} className="flex items-center justify-between">
+            {boundBindings.map(b => (
+              <div key={`${b.match.channel}:${b.match.accountId}`} className="flex items-center justify-between">
                 <span className="text-xs font-mono bg-blue-50 border border-blue-100 text-blue-700 rounded-lg px-2 py-1">
-                  telegram / {accountId}
+                  {b.match.channel} / {b.match.accountId}
                 </span>
                 <button
                   className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-                  onClick={() => onUpdate({ __removeBinding: { accountId } } as unknown as Partial<AgentConfig>)}
+                  onClick={() => onUpdate({ __removeBinding: { channel: b.match.channel, accountId: b.match.accountId } } as unknown as Partial<AgentConfig>)}
                 >
                   × 解除
                 </button>
               </div>
             ))}
-            {unboundAccountIds.length > 0 && (
+            {unboundAccounts.length > 0 && (
               <div className="flex items-center gap-2 pt-1">
                 <Select value={addingFor} onValueChange={setAddingFor}>
                   <SelectTrigger className="h-8 text-xs flex-1">
-                    <SelectValue placeholder="选择 Telegram 账号" />
+                    <SelectValue placeholder="选择 Channel 账号" />
                   </SelectTrigger>
                   <SelectContent>
-                    {unboundAccountIds.map(accountId => (
-                      <SelectItem key={accountId} value={accountId}>{accountId}</SelectItem>
+                    {unboundAccounts.map(a => (
+                      <SelectItem key={`${a.channel}:${a.accountId}`} value={`${a.channel}:${a.accountId}`}>
+                        {a.channel} / {a.accountId}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -340,9 +359,20 @@ function AgentEditor({
 export default function AgentsTab({ config, onChange }: Props) {
   const list = config.agents?.list ?? []
   const [selectedId, setSelectedId] = useState<string>(list[0]?.id ?? "")
+  const [addingNew, setAddingNew] = useState(false)
+  const [newId, setNewId] = useState("")
+  const [creating, setCreating] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const newIdInputRef = useRef<HTMLInputElement>(null)
 
   // Keep selectedId valid when list changes
   const validSelectedId = list.some(a => a.id === selectedId) ? selectedId : (list[0]?.id ?? "")
+
+  useEffect(() => {
+    if (addingNew) {
+      setTimeout(() => newIdInputRef.current?.focus(), 50)
+    }
+  }, [addingNew])
 
   const modelOptions: { value: string; label: string }[] = []
   for (const [providerName, provider] of Object.entries(config.models?.providers ?? {})) {
@@ -354,18 +384,79 @@ export default function AgentsTab({ config, onChange }: Props) {
     }
   }
 
+  function newIdError(): string | null {
+    if (!newId) return null
+    if (!AGENT_ID_RE.test(newId)) return "只允许英文字母、数字、_ 和 -，且须以字母或 _ 开头"
+    if (list.some(a => a.id === newId)) return "该 ID 已存在"
+    return null
+  }
+
+  async function confirmAddAgent() {
+    const trimmed = newId.trim()
+    if (!trimmed || !AGENT_ID_RE.test(trimmed) || list.some(a => a.id === trimmed)) return
+    const isMain = trimmed === "main"
+    const workspace = isMain ? "~/.openclaw/workspace" : `~/.openclaw/agents/${trimmed}/workspace`
+    const agentDir = isMain ? "~/.openclaw/agents/main" : `~/.openclaw/agents/${trimmed}`
+
+    setCreating(true)
+    try {
+      await agentApi.create(trimmed, workspace, agentDir)
+    } catch (e) {
+      // CLI 创建失败（openclaw 未安装或目录权限问题），仅警告，不阻断 config 写入
+      toast.warning(`目录初始化失败: ${e}`)
+    } finally {
+      setCreating(false)
+    }
+
+    // 无论 CLI 是否成功，均将 agent 写入 profile config
+    onChange({ ...config, agents: { ...config.agents, list: [...list, { id: trimmed, workspace, agentDir }] } })
+    setSelectedId(trimmed)
+    setAddingNew(false)
+    setNewId("")
+    toast.success(`Agent "${trimmed}" 已添加`)
+  }
+
+  function cancelAddAgent() {
+    setAddingNew(false)
+    setNewId("")
+  }
+
+  async function importAgents() {
+    setImporting(true)
+    try {
+      const liveConfig = await agentApi.readLiveConfig()
+      const liveList = liveConfig?.agents?.list ?? []
+      if (liveList.length === 0) {
+        toast.info("当前配置中没有 agent")
+        return
+      }
+      const existingIds = new Set(list.map(a => a.id))
+      const newAgents = liveList.filter(a => !existingIds.has(a.id))
+      if (newAgents.length === 0) {
+        toast.info("没有新 agent 需要导入（已全部存在）")
+        return
+      }
+      onChange({ ...config, agents: { ...config.agents, list: [...list, ...newAgents] } })
+      toast.success(`已导入 ${newAgents.length} 个 agent`)
+    } catch (e) {
+      toast.error(`导入失败: ${e}`)
+    } finally {
+      setImporting(false)
+    }
+  }
+
   function updateAgent(id: string, patch: Partial<AgentConfig>) {
     const anyPatch = patch as Record<string, unknown>
     if (anyPatch.__addBinding) {
-      const { accountId } = anyPatch.__addBinding as { accountId: string }
+      const { channel, accountId } = anyPatch.__addBinding as { channel: string; accountId: string }
       const existing = config.bindings ?? []
-      const filtered = existing.filter(b => !(b.match.channel === "telegram" && b.match.accountId === accountId))
-      onChange({ ...config, bindings: [...filtered, { agentId: id, match: { channel: "telegram", accountId } }] })
+      const filtered = existing.filter(b => !(b.match.channel === channel && b.match.accountId === accountId))
+      onChange({ ...config, bindings: [...filtered, { agentId: id, match: { channel, accountId } }] })
       return
     }
     if (anyPatch.__removeBinding) {
-      const { accountId } = anyPatch.__removeBinding as { accountId: string }
-      onChange({ ...config, bindings: (config.bindings ?? []).filter(b => !(b.agentId === id && b.match.channel === "telegram" && b.match.accountId === accountId)) })
+      const { channel, accountId } = anyPatch.__removeBinding as { channel: string; accountId: string }
+      onChange({ ...config, bindings: (config.bindings ?? []).filter(b => !(b.agentId === id && b.match.channel === channel && b.match.accountId === accountId)) })
       return
     }
     onChange({ ...config, agents: { ...config.agents, list: list.map(a => a.id === id ? { ...a, ...patch } : a) } })
@@ -376,14 +467,6 @@ export default function AgentsTab({ config, onChange }: Props) {
     const nextBindings = (config.bindings ?? []).filter(b => b.agentId !== id)
     onChange({ ...config, agents: { ...config.agents, list: nextList }, bindings: nextBindings })
     setSelectedId(nextList[0]?.id ?? "")
-  }
-
-  function addAgent() {
-    const hasMain = list.some(a => a.id === "main")
-    const id = hasMain ? `agent_${Date.now()}` : "main"
-    const workspace = id === "main" ? "~/.openclaw/workspace" : ""
-    onChange({ ...config, agents: { ...config.agents, list: [...list, { id, workspace }] } })
-    setSelectedId(id)
   }
 
   const selectedAgent = list.find(a => a.id === validSelectedId)
@@ -418,13 +501,61 @@ export default function AgentsTab({ config, onChange }: Props) {
           ))}
         </div>
 
-        <div className="p-2 border-t">
-          <button
-            onClick={addAgent}
-            className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 py-2 text-xs text-gray-400 hover:border-blue-300 hover:text-blue-500 transition-colors"
-          >
-            <Plus size={12} /> 添加 Agent
-          </button>
+        <div className="p-2 border-t space-y-1.5">
+          {addingNew ? (
+            <>
+              <Input
+                ref={newIdInputRef}
+                value={newId}
+                onChange={e => setNewId(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter") confirmAddAgent()
+                  if (e.key === "Escape") cancelAddAgent()
+                }}
+                placeholder="agent-id（英文）"
+                className="h-7 text-xs font-mono"
+                maxLength={64}
+              />
+              {newIdError() && (
+                <p className="text-xs text-red-500 px-0.5">{newIdError()}</p>
+              )}
+              <div className="flex gap-1">
+                <button
+                  onClick={confirmAddAgent}
+                  disabled={!newId || !!newIdError() || creating}
+                  className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-xs py-1.5 transition-colors disabled:opacity-40"
+                >
+                  {creating ? (
+                    <span className="animate-pulse">创建中…</span>
+                  ) : (
+                    <><Check size={11} /> 确认</>
+                  )}
+                </button>
+                <button
+                  onClick={cancelAddAgent}
+                  className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 text-xs py-1.5 transition-colors"
+                >
+                  <X size={11} /> 取消
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setAddingNew(true)}
+                className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 py-2 text-xs text-gray-400 hover:border-blue-300 hover:text-blue-500 transition-colors"
+              >
+                <Plus size={12} /> 添加 Agent
+              </button>
+              <button
+                onClick={importAgents}
+                disabled={importing}
+                className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 py-2 text-xs text-gray-400 hover:border-green-300 hover:text-green-600 transition-colors disabled:opacity-40"
+              >
+                <Download size={12} /> {importing ? "导入中…" : "从当前配置导入"}
+              </button>
+            </>
+          )}
         </div>
       </div>
 

@@ -27,6 +27,15 @@ function getChannelStatus(config: Partial<OpenclawConfig>, channelId: string): b
   if (channelId === "telegram") {
     return config.channels?.telegram?.enabled ?? false
   }
+  if (channelId === "discord") {
+    return config.channels?.discord?.enabled ?? false
+  }
+  if (channelId === "dingding") {
+    return config.channels?.dingding?.enabled ?? false
+  }
+  if (channelId === "wecom") {
+    return config.channels?.wecom?.enabled ?? false
+  }
   if (channelId === "feishu") {
     return config.channels?.feishu?.enabled ?? false
   }
