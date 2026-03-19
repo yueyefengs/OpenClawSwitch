@@ -1,11 +1,11 @@
+mod commands;
 mod database;
 mod logger;
 mod services;
-mod commands;
 
 use database::Database;
-use std::sync::Mutex;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 pub struct AppState {
     pub db: Mutex<Database>,
@@ -14,9 +14,9 @@ pub struct AppState {
 }
 
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
-    use tauri::Manager;
     use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
     use tauri::tray::TrayIconBuilder;
+    use tauri::Manager;
 
     let state = app.state::<AppState>();
     let profiles = {
@@ -135,7 +135,8 @@ pub fn run() {
 fn maybe_import_existing_config(db: &Database, live_path: &std::path::Path) {
     use services::{config_parser, profile};
 
-    let count: i64 = db.conn
+    let count: i64 = db
+        .conn
         .query_row("SELECT count(*) FROM profiles", [], |r| r.get(0))
         .unwrap_or(0);
     if count > 0 {
@@ -156,9 +157,11 @@ fn maybe_import_existing_config(db: &Database, live_path: &std::path::Path) {
         let _ = profile::activate_profile(&db.conn, &p.id, live_path);
     } else {
         // Just mark it active in DB without writing a file
-        db.conn.execute(
-            "UPDATE profiles SET is_active = 1 WHERE id = ?1",
-            rusqlite::params![p.id],
-        ).expect("Failed to mark default profile as active");
+        db.conn
+            .execute(
+                "UPDATE profiles SET is_active = 1 WHERE id = ?1",
+                rusqlite::params![p.id],
+            )
+            .expect("Failed to mark default profile as active");
     }
 }

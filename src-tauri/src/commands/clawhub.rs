@@ -1,5 +1,5 @@
-use crate::AppState;
 use crate::services::profile::Skill;
+use crate::AppState;
 use tauri::State;
 use uuid::Uuid;
 
@@ -77,10 +77,7 @@ pub fn search_clawhub(q: String) -> Result<Vec<ClawhubSkill>, String> {
             return Ok(vec![]);
         };
 
-        let mut skills: Vec<ClawhubSkill> = items
-            .iter()
-            .filter_map(parse_skill_item)
-            .collect();
+        let mut skills: Vec<ClawhubSkill> = items.iter().filter_map(parse_skill_item).collect();
 
         skills.sort_by(|a, b| b.stars.cmp(&a.stars));
         Ok(skills)
@@ -115,10 +112,7 @@ pub fn search_clawhub(q: String) -> Result<Vec<ClawhubSkill>, String> {
             })
             .collect();
 
-        let url = format!(
-            "https://clawhub.ai/api/v1/search?q={}&limit=30",
-            encoded_q
-        );
+        let url = format!("https://clawhub.ai/api/v1/search?q={}&limit=30", encoded_q);
 
         let body: serde_json::Value = ureq::get(&url)
             .call()
@@ -157,9 +151,7 @@ pub fn search_clawhub(q: String) -> Result<Vec<ClawhubSkill>, String> {
                 let version = item
                     .get("version")
                     .and_then(|v| v.as_str())
-                    .or_else(|| {
-                        item.pointer("/tags/latest").and_then(|v| v.as_str())
-                    })
+                    .or_else(|| item.pointer("/tags/latest").and_then(|v| v.as_str()))
                     .unwrap_or("latest")
                     .to_string();
                 let stars = item
@@ -221,7 +213,10 @@ pub fn install_skill_from_clawhub(
             }
             Err(ureq::Error::Status(429, _)) => {
                 last_err = "下载被限速 (429)，请稍后重试".to_string();
-                eprintln!("[clawhub] rate limited on attempt {}, retrying...", attempt + 1);
+                eprintln!(
+                    "[clawhub] rate limited on attempt {}, retrying...",
+                    attempt + 1
+                );
             }
             Err(e) => {
                 return Err(format!("Download failed: {e}"));

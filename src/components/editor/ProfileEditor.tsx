@@ -11,29 +11,11 @@ import GatewayTab from "./GatewayTab"
 import AgentsTab from "./AgentsTab"
 import type { OpenclawConfig } from "../../types"
 import { toast } from "sonner"
+import { normalizeConfig } from "../../lib/config"
 
 interface Props {
   profileId: string
   onBack: () => void
-}
-
-/** Ensure every provider has `models: []` and every model has `name` set. */
-function normalizeConfig(config: Partial<OpenclawConfig>): Partial<OpenclawConfig> {
-  const providers = config.models?.providers
-  if (!providers) return config
-  const normalizedProviders = Object.fromEntries(
-    Object.entries(providers).map(([name, prov]) => {
-      const models = (prov.models ?? []).map(m => ({
-        ...m,
-        name: m.name ?? m.id,
-      }))
-      return [name, { ...prov, models }]
-    })
-  )
-  return {
-    ...config,
-    models: { ...config.models, providers: normalizedProviders },
-  }
 }
 
 /** Return a list of human-readable validation errors, or empty array if valid. */
@@ -62,6 +44,9 @@ function validateConfig(config: Partial<OpenclawConfig>): string[] {
   if (discord) {
     if (discord.dmPolicy === "allowlist" && (discord.allowFrom ?? []).length === 0) {
       errors.push("Discord 全局 dmPolicy=allowlist 时需至少填一个 Allow From 用户 ID")
+    }
+    if (discord.dmPolicy === "open" && !(discord.allowFrom ?? []).includes("*")) {
+      errors.push("Discord 全局 dmPolicy=open 时，Allow From 必须包含 *")
     }
     if (discord.groupPolicy === "allowlist" && (discord.allowFromGuilds ?? []).length === 0) {
       errors.push("Discord 全局 groupPolicy=allowlist 时需至少填一个 Allow From Guild ID")

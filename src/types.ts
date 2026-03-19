@@ -67,8 +67,7 @@ export interface FeishuChannelConfig {
 }
 
 export interface DiscordAccountConfig {
-  botName?: string
-  botToken: string
+  token: string
   enabled?: boolean
 }
 

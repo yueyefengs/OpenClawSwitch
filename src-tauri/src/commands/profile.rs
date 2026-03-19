@@ -1,4 +1,4 @@
-use crate::{AppState, logger, services::profile};
+use crate::{logger, services::profile, AppState};
 use serde_json::Value;
 use tauri::State;
 
@@ -14,9 +14,9 @@ fn find_openclaw() -> Option<std::path::PathBuf> {
 
     #[cfg(target_os = "windows")]
     let candidates: Vec<std::path::PathBuf> = {
-        let mut v = vec![
-            std::path::PathBuf::from(r"C:\Program Files\openclaw\openclaw.exe"),
-        ];
+        let mut v = vec![std::path::PathBuf::from(
+            r"C:\Program Files\openclaw\openclaw.exe",
+        )];
         if let Some(h) = &home {
             v.push(h.join(r"AppData\Roaming\npm\openclaw.cmd"));
             v.push(h.join(r"AppData\Roaming\npm\openclaw.exe"));
@@ -151,13 +151,22 @@ pub fn update_profile_config(
     id: String,
     config: Value,
 ) -> Result<(), CommandError> {
-    logger::log_info(&state.log_path, &format!("update_profile_config: id={}", id));
+    logger::log_info(
+        &state.log_path,
+        &format!("update_profile_config: id={}", id),
+    );
     let db = state.db.lock().unwrap();
     let result = profile::update_profile_config(&db.conn, &id, config).map_err(CommandError::from);
     if let Err(ref e) = result {
-        logger::log_error(&state.log_path, &format!("update_profile_config failed: id={} err={}", id, e.0));
+        logger::log_error(
+            &state.log_path,
+            &format!("update_profile_config failed: id={} err={}", id, e.0),
+        );
     } else {
-        logger::log_info(&state.log_path, &format!("update_profile_config succeeded: id={}", id));
+        logger::log_info(
+            &state.log_path,
+            &format!("update_profile_config succeeded: id={}", id),
+        );
     }
     result
 }
@@ -179,86 +188,142 @@ pub fn save_and_restart(
     let is_active: bool = {
         let db = state.db.lock().unwrap();
         logger::log_info(&log_path, "save_and_restart: Phase1 - updating DB");
-        let result = profile::update_profile_config(&db.conn, &id, config).map_err(CommandError::from);
+        let result =
+            profile::update_profile_config(&db.conn, &id, config).map_err(CommandError::from);
         if let Err(ref e) = result {
-            logger::log_error(&log_path, &format!("save_and_restart: Phase1 DB update failed: {}", e.0));
+            logger::log_error(
+                &log_path,
+                &format!("save_and_restart: Phase1 DB update failed: {}", e.0),
+            );
             return result.map(|_| String::new());
         }
-        let active = db.conn
+        let active = db
+            .conn
             .query_row(
                 "SELECT is_active FROM profiles WHERE id = ?1",
                 rusqlite::params![&id],
                 |row| row.get(0),
             )
             .unwrap_or(false);
-        logger::log_info(&log_path, &format!("save_and_restart: Phase1 done, is_active={}", active));
+        logger::log_info(
+            &log_path,
+            &format!("save_and_restart: Phase1 done, is_active={}", active),
+        );
         active
     };
 
     if !is_active {
         // Inactive profile: DB is updated, no file write needed
-        logger::log_info(&log_path, "save_and_restart: profile not active, skipping file write and restart");
+        logger::log_info(
+            &log_path,
+            "save_and_restart: profile not active, skipping file write and restart",
+        );
         return Ok(String::new());
     }
 
     // Phase 2: backup existing live config file
-    logger::log_info(&log_path, &format!("save_and_restart: Phase2 - backing up live config at {:?}", live_path));
+    logger::log_info(
+        &log_path,
+        &format!(
+            "save_and_restart: Phase2 - backing up live config at {:?}",
+            live_path
+        ),
+    );
     let backup: Option<String> = if live_path.exists() {
         match std::fs::read_to_string(&live_path) {
             Ok(content) => {
-                logger::log_info(&log_path, "save_and_restart: Phase2 backup read successfully");
+                logger::log_info(
+                    &log_path,
+                    "save_and_restart: Phase2 backup read successfully",
+                );
                 Some(content)
             }
             Err(e) => {
                 let msg = format!("备份配置文件失败: {}", e);
-                logger::log_error(&log_path, &format!("save_and_restart: Phase2 backup failed: {}", e));
+                logger::log_error(
+                    &log_path,
+                    &format!("save_and_restart: Phase2 backup failed: {}", e),
+                );
                 return Err(CommandError(msg));
             }
         }
     } else {
-        logger::log_info(&log_path, "save_and_restart: Phase2 no existing live config to backup");
+        logger::log_info(
+            &log_path,
+            "save_and_restart: Phase2 no existing live config to backup",
+        );
         None
     };
 
     // Phase 3: write new config to live file
-    logger::log_info(&log_path, "save_and_restart: Phase3 - writing new config to live file");
+    logger::log_info(
+        &log_path,
+        "save_and_restart: Phase3 - writing new config to live file",
+    );
     {
         let db = state.db.lock().unwrap();
-        let result = profile::activate_profile(&db.conn, &id, &live_path).map_err(CommandError::from);
+        let result =
+            profile::activate_profile(&db.conn, &id, &live_path).map_err(CommandError::from);
         if let Err(ref e) = result {
-            logger::log_error(&log_path, &format!("save_and_restart: Phase3 write live config failed: {}", e.0));
+            logger::log_error(
+                &log_path,
+                &format!("save_and_restart: Phase3 write live config failed: {}", e.0),
+            );
             return result.map(|_| String::new());
         }
     }
     logger::log_info(&log_path, "save_and_restart: Phase3 done");
 
     // Phase 4: restart gateway; restore backup on failure
-    logger::log_info(&log_path, "save_and_restart: Phase4 - running `openclaw gateway restart`");
-    let output = run_openclaw_gateway_restart()
-        .map_err(|e| {
-            if let Some(ref content) = backup {
-                let _ = std::fs::write(&live_path, content);
-                logger::log_info(&log_path, "save_and_restart: backup restored after exec error");
-            }
-            let msg = format!("无法执行 openclaw: {}", e);
-            logger::log_error(&log_path, &format!("save_and_restart: Phase4 exec error: {}", e));
-            CommandError(msg)
-        })?;
+    logger::log_info(
+        &log_path,
+        "save_and_restart: Phase4 - running `openclaw gateway restart`",
+    );
+    let output = run_openclaw_gateway_restart().map_err(|e| {
+        if let Some(ref content) = backup {
+            let _ = std::fs::write(&live_path, content);
+            logger::log_info(
+                &log_path,
+                "save_and_restart: backup restored after exec error",
+            );
+        }
+        let msg = format!("无法执行 openclaw: {}", e);
+        logger::log_error(
+            &log_path,
+            &format!("save_and_restart: Phase4 exec error: {}", e),
+        );
+        CommandError(msg)
+    })?;
 
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-        logger::log_info(&log_path, &format!("save_and_restart: Phase4 gateway restart succeeded. stdout={}", stdout.trim()));
+        logger::log_info(
+            &log_path,
+            &format!(
+                "save_and_restart: Phase4 gateway restart succeeded. stdout={}",
+                stdout.trim()
+            ),
+        );
         Ok(stdout)
     } else {
         if let Some(ref content) = backup {
             let _ = std::fs::write(&live_path, content);
-            logger::log_info(&log_path, "save_and_restart: backup restored after gateway restart failure");
+            logger::log_info(
+                &log_path,
+                "save_and_restart: backup restored after gateway restart failure",
+            );
         }
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         let msg = if !stderr.is_empty() { stderr } else { stdout };
         let err_msg = format!("Gateway 重启失败，已恢复备份: {}", msg.trim());
-        logger::log_error(&log_path, &format!("save_and_restart: Phase4 gateway restart failed: {}", msg.trim()));
+        logger::log_error(
+            &log_path,
+            &format!(
+                "save_and_restart: Phase4 gateway restart failed: {}",
+                msg.trim()
+            ),
+        );
         Err(CommandError(err_msg))
     }
 }
@@ -283,9 +348,13 @@ pub fn delete_profile(state: State<'_, AppState>, id: String) -> Result<(), Comm
 pub fn activate_profile(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
     logger::log_info(&state.log_path, &format!("activate_profile: id={}", id));
     let db = state.db.lock().unwrap();
-    let result = profile::activate_profile(&db.conn, &id, &state.live_config_path).map_err(Into::into);
+    let result =
+        profile::activate_profile(&db.conn, &id, &state.live_config_path).map_err(Into::into);
     if let Err(ref e) = result {
-        logger::log_error(&state.log_path, &format!("activate_profile failed: id={} err={:?}", id, e));
+        logger::log_error(
+            &state.log_path,
+            &format!("activate_profile failed: id={} err={:?}", id, e),
+        );
     }
     result
 }
@@ -303,7 +372,10 @@ pub fn get_log_path(state: State<'_, AppState>) -> String {
 }
 
 #[tauri::command]
-pub fn clone_profile(state: State<'_, AppState>, id: String) -> Result<profile::Profile, CommandError> {
+pub fn clone_profile(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<profile::Profile, CommandError> {
     logger::log_info(&state.log_path, &format!("clone_profile: id={}", id));
     let db = state.db.lock().unwrap();
     profile::clone_profile(&db.conn, &id).map_err(Into::into)
@@ -312,7 +384,9 @@ pub fn clone_profile(state: State<'_, AppState>, id: String) -> Result<profile::
 // ─── MCP Servers ─────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn list_mcp_servers(state: State<'_, AppState>) -> Result<Vec<profile::McpServer>, CommandError> {
+pub fn list_mcp_servers(
+    state: State<'_, AppState>,
+) -> Result<Vec<profile::McpServer>, CommandError> {
     let db = state.db.lock().unwrap();
     profile::list_mcp_servers(&db.conn).map_err(Into::into)
 }
@@ -429,8 +503,14 @@ pub fn upsert_skill(
     install_path: Option<String>,
 ) -> Result<profile::Skill, CommandError> {
     let db = state.db.lock().unwrap();
-    profile::upsert_skill(&db.conn, &id, &name, source_url.as_deref(), install_path.as_deref())
-        .map_err(Into::into)
+    profile::upsert_skill(
+        &db.conn,
+        &id,
+        &name,
+        source_url.as_deref(),
+        install_path.as_deref(),
+    )
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -462,16 +542,14 @@ pub fn write_file(path: String, content: String) -> Result<(), CommandError> {
         std::fs::create_dir_all(parent)
             .map_err(|e| CommandError(format!("创建目录失败: {}", e)))?;
     }
-    std::fs::write(&p, content)
-        .map_err(|e| CommandError(format!("写入文件失败: {}", e)))
+    std::fs::write(&p, content).map_err(|e| CommandError(format!("写入文件失败: {}", e)))
 }
 
 /// Read content of a file.
 #[tauri::command]
 pub fn read_file(path: String) -> Result<String, CommandError> {
     let p = expand_tilde(&path);
-    std::fs::read_to_string(&p)
-        .map_err(|e| CommandError(format!("读取文件失败: {}", e)))
+    std::fs::read_to_string(&p).map_err(|e| CommandError(format!("读取文件失败: {}", e)))
 }
 
 #[derive(serde::Serialize)]
@@ -506,7 +584,7 @@ fn stream_command(
     use tauri::Emitter;
 
     cmd.stdout(std::process::Stdio::piped())
-       .stderr(std::process::Stdio::piped());
+        .stderr(std::process::Stdio::piped());
 
     std::thread::spawn(move || {
         let mut child = match cmd.spawn() {
@@ -540,8 +618,12 @@ fn stream_command(
             })
         });
 
-        if let Some(t) = stdout_thread { let _ = t.join(); }
-        if let Some(t) = stderr_thread { let _ = t.join(); }
+        if let Some(t) = stdout_thread {
+            let _ = t.join();
+        }
+        if let Some(t) = stderr_thread {
+            let _ = t.join();
+        }
 
         let ok = child.wait().map(|s| s.success()).unwrap_or(false);
         let _ = window.emit(event_name, if ok { "\x00EXIT:0" } else { "\x00EXIT:1" });
@@ -556,7 +638,9 @@ pub fn install_openclaw(window: tauri::WebviewWindow) -> Result<(), CommandError
     let cmd = {
         let mut c = std::process::Command::new("powershell");
         c.args([
-            "-NoProfile", "-NonInteractive", "-Command",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
             "& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1))) -NoOnboard",
         ]);
         c.env("PATH", &path_env);
@@ -566,7 +650,10 @@ pub fn install_openclaw(window: tauri::WebviewWindow) -> Result<(), CommandError
     #[cfg(not(target_os = "windows"))]
     let cmd = {
         let mut c = std::process::Command::new("bash");
-        c.args(["-c", "curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard"]);
+        c.args([
+            "-c",
+            "curl -fsSL https://openclaw.ai/install.sh | bash -s -- --no-onboard",
+        ]);
         c.env("PATH", &path_env);
         c
     };
@@ -584,8 +671,7 @@ pub fn read_live_config(state: State<'_, AppState>) -> Result<serde_json::Value,
     if !path.exists() {
         return Ok(serde_json::json!({}));
     }
-    config_parser::read_config(path)
-        .map_err(|e| CommandError(format!("读取配置失败: {}", e)))
+    config_parser::read_config(path).map_err(|e| CommandError(format!("读取配置失败: {}", e)))
 }
 
 /// Create an agent via `openclaw agents add <id> --workspace <path>`.
@@ -613,7 +699,13 @@ pub fn create_agent_via_cli(
     };
 
     let output = std::process::Command::new(bin)
-        .args(["agents", "add", &agent_id, "--workspace", &workspace_path.to_string_lossy()])
+        .args([
+            "agents",
+            "add",
+            &agent_id,
+            "--workspace",
+            &workspace_path.to_string_lossy(),
+        ])
         .env("PATH", augmented_path())
         .output()
         .map_err(|e| CommandError(format!("执行 openclaw 失败: {}", e)))?;
@@ -624,7 +716,10 @@ pub fn create_agent_via_cli(
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         let msg = if !stderr.is_empty() { stderr } else { stdout };
-        Err(CommandError(format!("openclaw agents add 失败: {}", msg.trim())))
+        Err(CommandError(format!(
+            "openclaw agents add 失败: {}",
+            msg.trim()
+        )))
     }
 }
 

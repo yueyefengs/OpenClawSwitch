@@ -1,6 +1,6 @@
 use serde_json::Value;
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -55,7 +55,11 @@ mod tests {
     fn test_read_json5_with_comments() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("openclaw.json");
-        fs::write(&path, "{ // comment\n    \"models\": { \"providers\": {} },\n}").unwrap();
+        fs::write(
+            &path,
+            "{ // comment\n    \"models\": { \"providers\": {} },\n}",
+        )
+        .unwrap();
         let val = read_config(&path).unwrap();
         assert!(val["models"].is_object());
     }
@@ -69,7 +73,8 @@ mod tests {
         let readback = read_config(&path).unwrap();
         assert_eq!(readback["test"], "value");
         // No tmp file left after successful write
-        let tmp_files: Vec<_> = std::fs::read_dir(dir.path()).unwrap()
+        let tmp_files: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
             .filter_map(|e| e.ok())
             .filter(|e| e.path().extension().map_or(false, |ext| ext == "tmp"))
             .collect();

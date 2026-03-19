@@ -56,7 +56,7 @@ export default function DiscordDetailPage({ config, onChange, onBack }: Props) {
   function addAccount() {
     const id = `account_${Date.now()}`
     patchDiscord(config, {
-      accounts: { ...accounts, [id]: { botToken: "" } },
+      accounts: { ...accounts, [id]: { token: "" } },
     }, onChange)
     setSelectedAccountId(id)
   }
@@ -102,7 +102,26 @@ export default function DiscordDetailPage({ config, onChange, onBack }: Props) {
     patchDiscord(config, { allowFromGuilds: current.filter(g => g !== guildId) }, onChange)
   }
 
+  function updateDmPolicy(policy: DiscordChannelConfig["dmPolicy"]) {
+    const patch: Partial<DiscordChannelConfig> = { dmPolicy: policy }
+    if (policy === "open" && !(dc.allowFrom ?? []).includes("*")) {
+      patch.allowFrom = ["*", ...(dc.allowFrom ?? [])]
+    }
+    patchDiscord(config, patch, onChange)
+  }
+
+  function enableOpenDmAccess() {
+    const next = ["*", ...(dc.allowFrom ?? []).filter(userId => userId !== "*")]
+    patchDiscord(config, { dmPolicy: "open", allowFrom: next }, onChange)
+  }
+
+  function disableOpenDmAccess() {
+    const next = (dc.allowFrom ?? []).filter(userId => userId !== "*")
+    patchDiscord(config, { allowFrom: next }, onChange)
+  }
+
   const needsAllowFrom = dc.dmPolicy === "allowlist" && (dc.allowFrom ?? []).length === 0
+  const needsOpenWildcard = dc.dmPolicy === "open" && !(dc.allowFrom ?? []).includes("*")
   const needsGuildAllowFrom =
     dc.groupPolicy === "allowlist" && (dc.allowFromGuilds ?? []).length === 0
 
@@ -159,8 +178,8 @@ export default function DiscordDetailPage({ config, onChange, onBack }: Props) {
                   <p className="text-xs font-semibold text-gray-600">Discord 机器人列表</p>
                 </div>
                 <div className="space-y-1 p-2">
-                  {Object.entries(accounts).map(([id, account]) => {
-                    const displayName = account.botName?.trim() || id
+                  {Object.entries(accounts).map(([id, _account]) => {
+                    const displayName = id
                     const avatarText = displayName.charAt(0).toUpperCase()
 
                     return (
@@ -199,9 +218,8 @@ export default function DiscordDetailPage({ config, onChange, onBack }: Props) {
                     <div className="flex items-center justify-between border-b pb-4">
                       <div>
                         <h3 className="font-semibold">
-                          {accounts[selectedAccountId].botName?.trim() || selectedAccountId}
+                          {selectedAccountId}
                         </h3>
-                        <p className="text-xs font-mono text-gray-500">{selectedAccountId}</p>
                       </div>
                       <Button
                         variant="ghost"
@@ -213,26 +231,13 @@ export default function DiscordDetailPage({ config, onChange, onBack }: Props) {
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-xs">机器人名称</Label>
-                      <Input
-                        type="text"
-                        value={accounts[selectedAccountId].botName ?? ""}
-                        onChange={e =>
-                          updateAccount(selectedAccountId, { botName: e.target.value })
-                        }
-                        placeholder="Primary bot"
-                        className="text-xs"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
                       <Label className="text-xs">机器人令牌</Label>
                       <div className="flex gap-2">
                         <Input
                           type={visibleTokens[selectedAccountId] ? "text" : "password"}
-                          value={accounts[selectedAccountId].botToken ?? ""}
+                          value={accounts[selectedAccountId].token ?? ""}
                           onChange={e =>
-                            updateAccount(selectedAccountId, { botToken: e.target.value })
+                            updateAccount(selectedAccountId, { token: e.target.value })
                           }
                           placeholder="MTIzNDU2Nzg5MA.GhIjKl.mnoPqRsTuVwXyZ..."
                           className="text-xs"
@@ -257,10 +262,10 @@ export default function DiscordDetailPage({ config, onChange, onBack }: Props) {
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            const text = accounts[selectedAccountId].botToken ?? ""
+                            const text = accounts[selectedAccountId].token ?? ""
                             navigator.clipboard.writeText(text)
                           }}
-                          disabled={!accounts[selectedAccountId].botToken}
+                          disabled={!accounts[selectedAccountId].token}
                         >
                           📋
                         </Button>
@@ -297,9 +302,7 @@ export default function DiscordDetailPage({ config, onChange, onBack }: Props) {
                   <Label>策略</Label>
                   <Select
                     value={dc.dmPolicy ?? "pairing"}
-                    onValueChange={v =>
-                      patchDiscord(config, { dmPolicy: v as DiscordChannelConfig["dmPolicy"] }, onChange)
-                    }
+                    onValueChange={v => updateDmPolicy(v as DiscordChannelConfig["dmPolicy"])}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -316,10 +319,34 @@ export default function DiscordDetailPage({ config, onChange, onBack }: Props) {
 
                 {dc.dmPolicy !== "disabled" && (
                   <div className="space-y-2">
-                    <Label>允许用户列表</Label>
+                    <div className="flex items-center justify-between gap-3">
+                      <Label>允许用户列表</Label>
+                      <Button
+                        variant={(dc.allowFrom ?? []).includes("*") ? "default" : "outline"}
+                        size="sm"
+                        className="h-8 shrink-0"
+                        onClick={() =>
+                          (dc.allowFrom ?? []).includes("*")
+                            ? disableOpenDmAccess()
+                            : enableOpenDmAccess()
+                        }
+                      >
+                        允许所有用户 (*)
+                      </Button>
+                    </div>
+                    {dc.dmPolicy === "open" && (
+                      <p className="text-xs text-gray-500">
+                        Discord 的私聊开放模式要求允许列表里包含 <code>*</code>。点击右侧按钮可一键设置。
+                      </p>
+                    )}
                     {needsAllowFrom && (
                       <p className="text-xs text-red-600">
                         白名单模式至少需要一个用户
+                      </p>
+                    )}
+                    {needsOpenWildcard && (
+                      <p className="text-xs text-red-600">
+                        open 模式必须包含 <code>*</code>，否则 OpenClaw 会拒绝启动 Discord 渠道。
                       </p>
                     )}
                     <div className="flex flex-wrap gap-1">
@@ -346,7 +373,7 @@ export default function DiscordDetailPage({ config, onChange, onBack }: Props) {
                         onChange={e => setAllowFromInput(e.target.value)}
                         onKeyDown={e => e.key === "Enter" && addAllowFrom()}
                         onBlur={addAllowFrom}
-                        placeholder="Discord user ID"
+                        placeholder='Discord user ID or "*"'
                       />
                       <Button
                         variant="outline"
@@ -383,6 +410,11 @@ export default function DiscordDetailPage({ config, onChange, onBack }: Props) {
                       ))}
                     </SelectContent>
                   </Select>
+                  {dc.groupPolicy === "open" && (
+                    <p className="text-xs text-gray-500">
+                      当前已开放所有服务器消息。若只想让指定服务器可用，请切换到 <code>allowlist</code> 并填入服务器 ID。
+                    </p>
+                  )}
                 </div>
 
                 {dc.groupPolicy === "allowlist" && (
