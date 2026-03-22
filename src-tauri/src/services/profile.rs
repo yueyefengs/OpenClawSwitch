@@ -33,6 +33,7 @@ fn sanitize_config(config: Value) -> Value {
     let mut config = config;
     sanitize_discord_accounts(&mut config);
     sanitize_provider_configs(&mut config);
+    sanitize_gateway_config(&mut config);
     config
 }
 
@@ -68,17 +69,96 @@ fn sanitize_provider_configs(config: &mut Value) {
         return;
     };
 
-    for provider in providers.values_mut() {
+    for (provider_name, provider) in providers.iter_mut() {
         let Some(provider_obj) = provider.as_object_mut() else {
             continue;
         };
 
-        // OpenClaw currently validates provider.baseUrl as a string. Older drafts and
-        // first-run flows may omit it entirely, so we normalize the missing field to
-        // an empty string before persisting or writing the live config.
-        if !provider_obj.contains_key("baseUrl") || provider_obj["baseUrl"].is_null() {
-            provider_obj.insert("baseUrl".to_string(), Value::String(String::new()));
+        let api = provider_obj
+            .get("api")
+            .and_then(|value| value.as_str())
+            .unwrap_or("openai-responses");
+
+        let base_url = provider_obj.get("baseUrl").and_then(|value| value.as_str());
+        let base_url_missing = base_url.map(|value| value.trim().is_empty()).unwrap_or(true);
+
+        if api_supports_implicit_base_url(api) {
+            if base_url_missing {
+                provider_obj.remove("baseUrl");
+            }
+            continue;
         }
+
+        if base_url_missing {
+            if let Some(default_base_url) = default_provider_base_url(provider_name, api) {
+                provider_obj.insert(
+                    "baseUrl".to_string(),
+                    Value::String(default_base_url.to_string()),
+                );
+            } else {
+                provider_obj.remove("baseUrl");
+            }
+        }
+    }
+}
+
+fn api_supports_implicit_base_url(api: &str) -> bool {
+    matches!(
+        api,
+        "anthropic-messages"
+            | "google-generative-ai"
+            | "bedrock-converse-stream"
+            | "github-copilot"
+    )
+}
+
+fn default_provider_base_url(provider_name: &str, api: &str) -> Option<&'static str> {
+    match provider_name {
+        "openai" => Some("https://api.openai.com/v1"),
+        "deepseek" => Some("https://api.deepseek.com/v1"),
+        "moonshot" => Some("https://api.moonshot.ai/v1"),
+        "zai" => Some("https://open.bigmodel.cn/api/paas/v4"),
+        "shisha" => Some("https://api.shishaapi.com/v1"),
+        "openrouter" => Some("https://openrouter.ai/api/v1"),
+        "ollama" => Some("http://localhost:11434/v1"),
+        "xai" => Some("https://api.x.ai/v1"),
+        "mistral" => Some("https://api.mistral.ai/v1"),
+        _ => match api {
+            "openai-completions" | "openai-responses" | "openai-codex-responses" => {
+                Some("https://api.openai.com/v1")
+            }
+            _ => None,
+        },
+    }
+}
+
+fn sanitize_gateway_config(config: &mut Value) {
+    if config.pointer("/gateway").is_none() {
+        config["gateway"] = serde_json::json!({});
+    }
+
+    let gateway = &mut config["gateway"];
+
+    let mode_missing = gateway
+        .get("mode")
+        .and_then(|value| value.as_str())
+        .map(|value| value.trim().is_empty())
+        .unwrap_or(true);
+    if mode_missing {
+        gateway["mode"] = serde_json::json!("local");
+    }
+
+    if gateway.get("auth").is_none() || gateway["auth"].is_null() {
+        gateway["auth"] = serde_json::json!({});
+    }
+
+    let token_missing = gateway["auth"]
+        .get("token")
+        .and_then(|value| value.as_str())
+        .map(|value| value.trim().is_empty())
+        .unwrap_or(true);
+    if token_missing {
+        gateway["auth"]["token"] = serde_json::json!(Uuid::new_v4().to_string());
     }
 }
 
@@ -682,6 +762,56 @@ mod tests {
     }
 
     #[test]
+    fn test_create_profile_adds_default_local_gateway_and_token() {
+        let db = setup_db();
+        let profile = create_profile(&db.conn, "default", None, serde_json::json!({})).unwrap();
+        let stored = get_profile_config(&db.conn, &profile.id).unwrap();
+
+        assert_eq!(
+            stored.pointer("/gateway/mode"),
+            Some(&serde_json::json!("local"))
+        );
+        assert!(
+            stored
+                .pointer("/gateway/auth/token")
+                .and_then(|value| value.as_str())
+                .is_some_and(|value| !value.is_empty()),
+            "default gateway auth token should be generated"
+        );
+    }
+
+    #[test]
+    fn test_activate_preserves_existing_gateway_mode_and_token() {
+        let db = setup_db();
+        let dir = TempDir::new().unwrap();
+        let live = dir.path().join("openclaw.json");
+        let config = serde_json::json!({
+            "gateway": {
+                "mode": "remote",
+                "auth": { "token": "existing-token" },
+                "remote": { "token": "remote-token" }
+            }
+        });
+        let profile = create_profile(&db.conn, "default", None, config).unwrap();
+        activate_profile(&db.conn, &profile.id, &live).unwrap();
+
+        let written = std::fs::read_to_string(&live).unwrap();
+        let written_config: serde_json::Value = serde_json::from_str(&written).unwrap();
+        assert_eq!(
+            written_config.pointer("/gateway/mode"),
+            Some(&serde_json::json!("remote"))
+        );
+        assert_eq!(
+            written_config.pointer("/gateway/auth/token"),
+            Some(&serde_json::json!("existing-token"))
+        );
+        assert_eq!(
+            written_config.pointer("/gateway/remote/token"),
+            Some(&serde_json::json!("remote-token"))
+        );
+    }
+
+    #[test]
     fn test_activate_injects_openai_api_key_into_env_vars() {
         let db = setup_db();
         let dir = TempDir::new().unwrap();
@@ -739,7 +869,7 @@ mod tests {
     }
 
     #[test]
-    fn test_activate_normalizes_missing_provider_base_url_to_empty_string() {
+    fn test_activate_normalizes_missing_openai_like_provider_base_url() {
         let db = setup_db();
         let dir = TempDir::new().unwrap();
         let live = dir.path().join("openclaw.json");
@@ -761,7 +891,35 @@ mod tests {
         let written_config: serde_json::Value = serde_json::from_str(&written).unwrap();
         assert_eq!(
             written_config.pointer("/models/providers/provider_1774147628813/baseUrl"),
-            Some(&serde_json::json!("")),
+            Some(&serde_json::json!("https://api.openai.com/v1")),
+        );
+    }
+
+    #[test]
+    fn test_activate_removes_empty_google_base_url() {
+        let db = setup_db();
+        let dir = TempDir::new().unwrap();
+        let live = dir.path().join("openclaw.json");
+        let config = serde_json::json!({
+            "models": {
+                "providers": {
+                    "google": {
+                        "api": "google-generative-ai",
+                        "apiKey": "google-key",
+                        "baseUrl": "",
+                        "models": [{ "id": "gemini-2.5-pro" }]
+                    }
+                }
+            }
+        });
+        let profile = create_profile(&db.conn, "google", None, config).unwrap();
+        activate_profile(&db.conn, &profile.id, &live).unwrap();
+
+        let written = std::fs::read_to_string(&live).unwrap();
+        let written_config: serde_json::Value = serde_json::from_str(&written).unwrap();
+        assert_eq!(
+            written_config.pointer("/models/providers/google/baseUrl"),
+            None
         );
     }
 

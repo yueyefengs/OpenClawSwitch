@@ -44,7 +44,10 @@ function ProviderCard({ name, prov, onUpdate, onRemove, onRename, onApplyPreset 
     setSelectedPreset(key)
     if (key !== "custom") {
       // Rename + update config in one atomic onChange call
-      onApplyPreset(key, { api: p.api, baseUrl: p.baseUrl ?? "" })
+      onApplyPreset(key, {
+        api: p.api,
+        ...(p.baseUrl !== undefined ? { baseUrl: p.baseUrl } : {}),
+      })
     }
   }
 

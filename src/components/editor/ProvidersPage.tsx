@@ -103,10 +103,15 @@ export default function ProvidersPage({
 
   function handleAddProvider(providerKey: string) {
     const preset = PRESET_MAP[providerKey]
-    upsertProvider(providerKey, {
+    const patch: ProviderConfig = {
       api: providers[providerKey]?.api ?? preset?.api ?? "openai-completions",
-      baseUrl: providers[providerKey]?.baseUrl ?? preset?.baseUrl ?? "",
-    })
+    }
+
+    if (providers[providerKey]?.baseUrl !== undefined || preset?.baseUrl !== undefined) {
+      patch.baseUrl = providers[providerKey]?.baseUrl ?? preset?.baseUrl
+    }
+
+    upsertProvider(providerKey, patch)
     setIsAdding(false)
     setSearchQuery("")
     handleProviderClick(providerKey)

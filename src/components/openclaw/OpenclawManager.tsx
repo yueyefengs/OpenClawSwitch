@@ -4,7 +4,7 @@ import {
   Dialog,
   DialogContent,
 } from "../ui/dialog"
-import { openclawApi, type OpenclawStatus } from "../../lib/api/profile"
+import { openclawApi, profileApi, type OpenclawStatus } from "../../lib/api/profile"
 import { cn } from "../../lib/utils"
 
 // ── Custom SVG icons ─────────────────────────────────────────────────────────
@@ -19,7 +19,7 @@ function InstallIcon({ className }: { className?: string }) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-type Phase = "idle" | "running" | "done-ok" | "done-err"
+type Phase = "idle" | "running" | "finalizing" | "done-ok" | "done-err"
 
 export default function OpenclawManager() {
   const [open, setOpen] = useState(false)
@@ -48,6 +48,78 @@ export default function OpenclawManager() {
     return () => { unlistenRef.current?.() }
   }, [])
 
+  function appendLogs(message: string) {
+    const lines = message
+      .split(/\r?\n/)
+      .map(line => line.trimEnd())
+      .filter(Boolean)
+
+    if (lines.length === 0) return
+    setLogs((prev) => [...prev, ...lines])
+  }
+
+  async function refreshStatus(expectedInstalled?: boolean) {
+    const attempts = expectedInstalled === undefined ? 1 : 8
+
+    for (let index = 0; index < attempts; index += 1) {
+      const nextStatus = await openclawApi.check()
+      setStatus(nextStatus)
+
+      if (expectedInstalled === undefined || nextStatus.installed === expectedInstalled) {
+        return nextStatus
+      }
+
+      await new Promise(resolve => window.setTimeout(resolve, 400))
+    }
+
+    const finalStatus = await openclawApi.check()
+    setStatus(finalStatus)
+    return finalStatus
+  }
+
+  async function initializeDefaultGatewayConfig() {
+    try {
+      const profiles = await profileApi.list()
+      const activeProfile = profiles.find(profile => profile.is_active) ?? profiles[0]
+      if (!activeProfile) {
+        setLogs((prev) => [...prev, "[初始化] 未找到可激活的配置，跳过默认 gateway 生成"])
+        return
+      }
+
+      const config = await profileApi.getConfig(activeProfile.id)
+      setLogs((prev) => [...prev, "[初始化] 正在写入默认配置到 ~/.openclaw/openclaw.json"])
+      await profileApi.activate(activeProfile.id)
+
+      setLogs((prev) => [...prev, "[初始化] 正在安装并启动 gateway service"])
+      appendLogs(await openclawApi.installGatewayService())
+      appendLogs(await openclawApi.repairGatewayService())
+
+      setLogs((prev) => [...prev, "[初始化] 正在重启 gateway 以应用当前配置"])
+      const restartOutput = await profileApi.saveAndRestart(activeProfile.id, config)
+      appendLogs(restartOutput)
+
+      if (/Gateway service not loaded/i.test(restartOutput)) {
+        setLogs((prev) => [...prev, "[初始化] 检测到 gateway service 未加载，正在执行修复并重试"])
+        appendLogs(await openclawApi.repairGatewayService())
+        appendLogs(await profileApi.saveAndRestart(activeProfile.id, config))
+      }
+
+      const gatewayStatus = await openclawApi.gatewayStatus()
+      appendLogs(gatewayStatus)
+      setLogs((prev) => [
+        ...prev,
+        "[初始化] 已生成默认 gateway 配置并启动本地服务",
+        "[提示] Dashboard 默认地址: http://127.0.0.1:18789/",
+        "[提示] 如果页面提示 unauthorized，请在控制台中使用 gateway.auth.token 认证",
+      ])
+      return true
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setLogs((prev) => [...prev, `[警告] OpenClaw 已安装，但初始化默认 gateway 配置失败: ${msg}`])
+      return false
+    }
+  }
+
   async function startOperation(op: "install" | "uninstall") {
     setLogs([])
     setPhase("running")
@@ -57,10 +129,39 @@ export default function OpenclawManager() {
     const unlisten = await openclawApi.onOutput((line) => {
       if (line.startsWith("\x00EXIT:")) {
         const ok = line === "\x00EXIT:0"
-        setPhase(ok ? "done-ok" : "done-err")
         unlistenRef.current?.()
         unlistenRef.current = null
-        openclawApi.check().then(setStatus)
+
+        void (async () => {
+          if (!ok) {
+            setPhase("done-err")
+            await refreshStatus(undefined)
+            return
+          }
+
+          if (op === "install") {
+            setPhase("finalizing")
+            const nextStatus = await refreshStatus(true)
+            if (!nextStatus.installed) {
+              setLogs((prev) => [...prev, "[警告] 安装脚本已完成，但系统暂未检测到 openclaw CLI"])
+              setPhase("done-err")
+              return
+            }
+
+            const initialized = await initializeDefaultGatewayConfig()
+            await refreshStatus(true)
+            setPhase(initialized ? "done-ok" : "done-err")
+            return
+          }
+
+          setPhase("done-ok")
+          setStatus({ installed: false, path: null })
+          const nextStatus = await refreshStatus(false)
+          if (nextStatus.installed) {
+            setLogs((prev) => [...prev, "[警告] 卸载命令已完成，但系统仍检测到 openclaw 可执行文件，界面已按未安装处理"])
+            setStatus({ installed: false, path: null })
+          }
+        })()
       } else {
         setLogs((prev) => [...prev, line])
       }
@@ -177,10 +278,11 @@ export default function OpenclawManager() {
                   <span className="ml-2 text-[#4B5563] text-[11px] font-mono">
                     {phase === "running"
                       ? (logs.length === 0 ? "正在启动..." : "执行中...")
+                      : phase === "finalizing" ? "安装后初始化中..."
                       : phase === "done-ok" ? "完成"
                       : "失败"}
                   </span>
-                  {phase === "running" && (
+                  {(phase === "running" || phase === "finalizing") && (
                     <Loader2 size={10} className="animate-spin text-[#4B5563] ml-auto" />
                   )}
                 </div>
@@ -250,13 +352,34 @@ export default function OpenclawManager() {
                 </>
               )}
 
+              {phase === "finalizing" && (
+                <>
+                  <button
+                    onClick={closeDialog}
+                    className="rounded-xl border border-[#E5E7EB] text-[#6B7280] hover:text-[#374151] hover:border-[#D1D5DB] text-[12px] font-medium px-4 h-9 transition-colors"
+                  >
+                    关闭
+                  </button>
+                  <div className="text-[11px] text-[#9CA3AF]">
+                    正在安装 gateway service 并启动本地 Dashboard...
+                  </div>
+                </>
+              )}
+
               {(phase === "done-ok" || phase === "done-err") && (
-                <button
-                  onClick={closeDialog}
-                  className="rounded-xl border border-[#E5E7EB] text-[#6B7280] hover:text-[#374151] hover:border-[#D1D5DB] text-[12px] font-medium px-4 h-9 transition-colors"
-                >
-                  关闭
-                </button>
+                <>
+                  <div className="text-[11px] text-[#9CA3AF] mr-auto">
+                    {installed
+                      ? "如本地页面仍无法访问，请查看日志中的 gateway status 输出。"
+                      : "已完成操作。"}
+                  </div>
+                  <button
+                    onClick={closeDialog}
+                    className="rounded-xl border border-[#E5E7EB] text-[#6B7280] hover:text-[#374151] hover:border-[#D1D5DB] text-[12px] font-medium px-4 h-9 transition-colors"
+                  >
+                    关闭
+                  </button>
+                </>
               )}
             </div>
           </div>

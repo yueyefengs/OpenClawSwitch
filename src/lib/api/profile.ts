@@ -59,6 +59,9 @@ export interface OpenclawStatus {
 export const openclawApi = {
   check: () => invoke<OpenclawStatus>("check_openclaw"),
   install: () => invoke<void>("install_openclaw"),
+  installGatewayService: () => invoke<string>("install_openclaw_gateway_service"),
+  repairGatewayService: () => invoke<string>("repair_openclaw_gateway_service"),
+  gatewayStatus: () => invoke<string>("get_openclaw_gateway_status"),
   uninstall: () => invoke<void>("uninstall_openclaw"),
   onOutput: (cb: (line: string) => void) =>
     listen<string>("openclaw-output", (e) => cb(e.payload)),

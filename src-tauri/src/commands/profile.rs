@@ -122,6 +122,31 @@ fn run_openclaw_gateway_restart() -> std::io::Result<std::process::Output> {
     }
 }
 
+fn run_openclaw_cli(args: &[&str]) -> Result<std::process::Output, CommandError> {
+    let Some(bin) = find_openclaw() else {
+        return Err(CommandError("openclaw 未安装".into()));
+    };
+
+    std::process::Command::new(bin)
+        .args(args)
+        .env("PATH", augmented_path())
+        .output()
+        .map_err(|e| CommandError(format!("执行 openclaw 失败: {}", e)))
+}
+
+fn command_output_text(output: &std::process::Output) -> String {
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+    if !stdout.is_empty() && !stderr.is_empty() {
+        format!("{}\n{}", stdout, stderr)
+    } else if !stdout.is_empty() {
+        stdout
+    } else {
+        stderr
+    }
+}
+
 impl From<profile::ProfileError> for CommandError {
     fn from(e: profile::ProfileError) -> Self {
         CommandError(e.to_string())
@@ -660,6 +685,94 @@ pub fn install_openclaw(window: tauri::WebviewWindow) -> Result<(), CommandError
 
     stream_command(cmd, window, "openclaw-output");
     Ok(())
+}
+
+#[tauri::command]
+pub fn install_openclaw_gateway_service() -> Result<String, CommandError> {
+    let output = run_openclaw_cli(&["gateway", "install", "--force"])?;
+    if output.status.success() {
+        Ok(command_output_text(&output))
+    } else {
+        Err(CommandError(format!(
+            "安装 gateway service 失败: {}",
+            command_output_text(&output)
+        )))
+    }
+}
+
+#[tauri::command]
+pub fn get_openclaw_gateway_status() -> Result<String, CommandError> {
+    let output = run_openclaw_cli(&["gateway", "status"])?;
+    if output.status.success() {
+        Ok(command_output_text(&output))
+    } else {
+        Err(CommandError(format!(
+            "获取 gateway 状态失败: {}",
+            command_output_text(&output)
+        )))
+    }
+}
+
+#[tauri::command]
+pub fn repair_openclaw_gateway_service() -> Result<String, CommandError> {
+    let mut steps: Vec<String> = Vec::new();
+
+    if let Ok(output) = run_openclaw_cli(&["doctor", "--yes"]) {
+        let text = command_output_text(&output);
+        if !text.is_empty() {
+            steps.push(text);
+        }
+    }
+
+    let install_output = run_openclaw_cli(&["gateway", "install", "--force"])?;
+    let install_text = command_output_text(&install_output);
+    if !install_text.is_empty() {
+        steps.push(install_text);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let home = dirs::home_dir().ok_or_else(|| CommandError("无法确定用户目录".into()))?;
+        let plist_path = home.join("Library/LaunchAgents/ai.openclaw.gateway.plist");
+        if plist_path.exists() {
+            let uid = unsafe { libc::geteuid() };
+            let domain = format!("gui/{}", uid);
+            let plist_path_str = plist_path.to_string_lossy().into_owned();
+            let launchd_label = format!("{}/ai.openclaw.gateway", domain);
+
+            let bootstrap = std::process::Command::new("launchctl")
+                .arg("bootstrap")
+                .arg(&domain)
+                .arg(&plist_path_str)
+                .output();
+            if let Ok(output) = bootstrap {
+                let text = command_output_text(&output);
+                if !text.is_empty() {
+                    steps.push(text);
+                }
+            }
+
+            let kickstart = std::process::Command::new("launchctl")
+                .arg("kickstart")
+                .arg("-k")
+                .arg(&launchd_label)
+                .output();
+            if let Ok(output) = kickstart {
+                let text = command_output_text(&output);
+                if !text.is_empty() {
+                    steps.push(text);
+                }
+            }
+        }
+    }
+
+    let status_output = run_openclaw_cli(&["gateway", "status"])?;
+    let status_text = command_output_text(&status_output);
+    if !status_text.is_empty() {
+        steps.push(status_text);
+    }
+
+    Ok(steps.join("\n"))
 }
 
 /// Read the live openclaw.json and return its parsed content.
