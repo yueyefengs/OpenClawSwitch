@@ -32,6 +32,7 @@ pub struct Profile {
 fn sanitize_config(config: Value) -> Value {
     let mut config = config;
     sanitize_discord_accounts(&mut config);
+    sanitize_provider_configs(&mut config);
     config
 }
 
@@ -56,6 +57,28 @@ fn sanitize_discord_accounts(config: &mut Value) {
 
         account_obj.remove("botName");
         account_obj.remove("botToken");
+    }
+}
+
+fn sanitize_provider_configs(config: &mut Value) {
+    let Some(providers) = config
+        .pointer_mut("/models/providers")
+        .and_then(|value| value.as_object_mut())
+    else {
+        return;
+    };
+
+    for provider in providers.values_mut() {
+        let Some(provider_obj) = provider.as_object_mut() else {
+            continue;
+        };
+
+        // OpenClaw currently validates provider.baseUrl as a string. Older drafts and
+        // first-run flows may omit it entirely, so we normalize the missing field to
+        // an empty string before persisting or writing the live config.
+        if !provider_obj.contains_key("baseUrl") || provider_obj["baseUrl"].is_null() {
+            provider_obj.insert("baseUrl".to_string(), Value::String(String::new()));
+        }
     }
 }
 
@@ -713,6 +736,33 @@ mod tests {
         );
         // 没有 baseUrl 时不应写入 OPENAI_API_BASE
         assert_eq!(written_config.pointer("/env/vars/OPENAI_API_BASE"), None);
+    }
+
+    #[test]
+    fn test_activate_normalizes_missing_provider_base_url_to_empty_string() {
+        let db = setup_db();
+        let dir = TempDir::new().unwrap();
+        let live = dir.path().join("openclaw.json");
+        let config = serde_json::json!({
+            "models": {
+                "providers": {
+                    "provider_1774147628813": {
+                        "api": "openai-completions",
+                        "apiKey": "sk-test",
+                        "models": [{ "id": "gpt-4o" }]
+                    }
+                }
+            }
+        });
+        let p = create_profile(&db.conn, "work", None, config).unwrap();
+        activate_profile(&db.conn, &p.id, &live).unwrap();
+
+        let written = std::fs::read_to_string(&live).unwrap();
+        let written_config: serde_json::Value = serde_json::from_str(&written).unwrap();
+        assert_eq!(
+            written_config.pointer("/models/providers/provider_1774147628813/baseUrl"),
+            Some(&serde_json::json!("")),
+        );
     }
 
     #[test]

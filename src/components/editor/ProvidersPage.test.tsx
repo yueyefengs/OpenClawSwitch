@@ -8,6 +8,7 @@ describe("ProvidersPage", () => {
     models: {
       providers: {
         openai: {
+          api: "openai-responses",
           apiKey: "sk-test",
           models: [
             { id: "gpt-4", name: "GPT-4" },
@@ -15,17 +16,24 @@ describe("ProvidersPage", () => {
           ],
         },
         anthropic: {
+          api: "anthropic-messages",
           apiKey: "",
           models: [],
         },
         google: {
+          api: "google-generative-ai",
           models: [{ id: "gemini-pro", name: "Gemini Pro" }],
+        },
+        provider_custom: {
+          api: "openai-completions",
+          baseUrl: "",
+          models: [{ id: "custom-model", name: "Custom Model" }],
         },
       },
     },
   }
 
-  it("renders provider list with header and tabs", () => {
+  it("renders configured providers list", () => {
     render(
       <ProvidersPage
         config={defaultConfig}
@@ -33,12 +41,13 @@ describe("ProvidersPage", () => {
       />
     )
 
-    expect(screen.getByText("AI 模型提供商")).toBeInTheDocument()
-    expect(screen.getByText(/Connected \(1\)/)).toBeInTheDocument()
-    expect(screen.getByText(/Available \(9\)/)).toBeInTheDocument()
+    expect(screen.getByText("已配置模型列表")).toBeInTheDocument()
+    expect(screen.getByText("OpenAI (GPT)")).toBeInTheDocument()
+    expect(screen.getByText("Anthropic (Claude)")).toBeInTheDocument()
+    expect(screen.getByText("provider_custom")).toBeInTheDocument()
   })
 
-  it("shows only connected providers when Connected tab is active", () => {
+  it("marks configured providers without api key as pending", () => {
     render(
       <ProvidersPage
         config={defaultConfig}
@@ -46,13 +55,10 @@ describe("ProvidersPage", () => {
       />
     )
 
-    // Connected tab is active by default
-    expect(screen.getByText("OpenAI")).toBeInTheDocument()
-    // Anthropic has no apiKey, so it shouldn't be visible
-    expect(screen.queryByText("Anthropic")).not.toBeInTheDocument()
+    expect(screen.getAllByText("待配置").length).toBeGreaterThan(0)
   })
 
-  it("switches to Available tab and shows unconnected providers", () => {
+  it("filters configured providers by search query", () => {
     render(
       <ProvidersPage
         config={defaultConfig}
@@ -60,50 +66,11 @@ describe("ProvidersPage", () => {
       />
     )
 
-    // Click on Available tab
-    const availableTab = screen.getByText(/Available \(9\)/)
-    fireEvent.click(availableTab)
-
-    // Should show unconnected providers
-    expect(screen.getByText("Anthropic")).toBeInTheDocument()
-    expect(screen.getByText("DeepSeek")).toBeInTheDocument()
-    // Connected providers should not be visible
-    expect(screen.queryByText("OpenAI")).not.toBeInTheDocument()
-  })
-
-  it("filters providers by search query", () => {
-    render(
-      <ProvidersPage
-        config={{
-          models: {
-            providers: {
-              openai: { apiKey: "sk-test", models: [] },
-              google: { apiKey: "key", models: [] },
-              anthropic: { apiKey: "", models: [] },
-            },
-          },
-        }}
-        onChange={() => {}}
-      />
-    )
-
-    const searchInput = screen.getByPlaceholderText("Search providers...")
+    const searchInput = screen.getByPlaceholderText("搜索已配置的 Provider")
     fireEvent.change(searchInput, { target: { value: "open" } })
 
-    expect(screen.getByText("OpenAI")).toBeInTheDocument()
-    expect(screen.queryByText("Anthropic")).not.toBeInTheDocument()
-  })
-
-  it("displays model count correctly", () => {
-    render(
-      <ProvidersPage
-        config={defaultConfig}
-        onChange={() => {}}
-      />
-    )
-
-    // OpenAI has 2 models
-    expect(screen.getByText("2 models configured")).toBeInTheDocument()
+    expect(screen.getByText("OpenAI (GPT)")).toBeInTheDocument()
+    expect(screen.queryByText("Anthropic (Claude)")).not.toBeInTheDocument()
   })
 
   it("calls onSelectProvider callback when a provider is clicked", () => {
@@ -116,13 +83,13 @@ describe("ProvidersPage", () => {
       />
     )
 
-    const openaiButton = screen.getByText("OpenAI")
+    const openaiButton = screen.getByText("OpenAI (GPT)")
     fireEvent.click(openaiButton)
 
     expect(handleSelectProvider).toHaveBeenCalledWith("openai")
   })
 
-  it("shows Connected/Not Connected status correctly", () => {
+  it("shows available providers when add mode is enabled", () => {
     render(
       <ProvidersPage
         config={defaultConfig}
@@ -130,26 +97,75 @@ describe("ProvidersPage", () => {
       />
     )
 
-    expect(screen.getByText("Connected")).toBeInTheDocument()
+    fireEvent.click(screen.getByText("+ 添加模型"))
+
+    expect(screen.getByText("添加模型提供商")).toBeInTheDocument()
+    expect(screen.getByText("DeepSeek")).toBeInTheDocument()
+    expect(screen.getByText("自定义 Provider")).toBeInTheDocument()
   })
 
-  it("shows message when no providers match search", () => {
+  it("adds a preset provider and opens it", () => {
+    const handleSelectProvider = vi.fn()
+    const handleChange = vi.fn()
     render(
       <ProvidersPage
         config={defaultConfig}
-        onChange={() => {}}
+        onChange={handleChange}
+        onSelectProvider={handleSelectProvider}
       />
     )
 
-    const searchInput = screen.getByPlaceholderText("Search providers...")
-    fireEvent.change(searchInput, { target: { value: "nonexistent" } })
+    fireEvent.click(screen.getByText("+ 添加模型"))
+    fireEvent.click(screen.getByText("DeepSeek"))
+
+    expect(handleChange).toHaveBeenCalledWith(expect.objectContaining({
+      models: expect.objectContaining({
+        providers: expect.objectContaining({
+          deepseek: expect.objectContaining({
+            api: "openai-completions",
+            baseUrl: "https://api.deepseek.com/v1",
+            models: [],
+          }),
+        }),
+      }),
+    }))
+    expect(handleSelectProvider).toHaveBeenCalledWith("deepseek")
+  })
+
+  it("adds a custom provider and opens it", () => {
+    vi.spyOn(Date, "now").mockReturnValue(123456)
+    const handleSelectProvider = vi.fn()
+    const handleChange = vi.fn()
+
+    render(
+      <ProvidersPage
+        config={{}}
+        onChange={handleChange}
+        onSelectProvider={handleSelectProvider}
+      />
+    )
+
+    fireEvent.click(screen.getByText("+ 添加模型"))
+    fireEvent.click(screen.getByText("自定义 Provider"))
 
     expect(
-      screen.getByText("No providers found matching your search")
-    ).toBeInTheDocument()
+      handleChange
+    ).toHaveBeenCalledWith(expect.objectContaining({
+      models: expect.objectContaining({
+        providers: expect.objectContaining({
+          provider_123456: expect.objectContaining({
+            api: "openai-completions",
+            baseUrl: "",
+            models: [],
+          }),
+        }),
+      }),
+    }))
+    expect(handleSelectProvider).toHaveBeenCalledWith("provider_123456")
+    vi.restoreAllMocks()
   })
 
-  it("handles empty config gracefully", () => {
+  it("handles empty configured list gracefully", () => {
     render(
       <ProvidersPage
         config={{}}
@@ -157,8 +173,6 @@ describe("ProvidersPage", () => {
       />
     )
 
-    expect(screen.getByText("AI 模型提供商")).toBeInTheDocument()
-    // All providers should be in Available tab
-    expect(screen.getByText(/Available \(10\)/)).toBeInTheDocument()
+    expect(screen.getByText("还没有配置任何 Provider，点击右上角“添加模型”开始")).toBeInTheDocument()
   })
 })
