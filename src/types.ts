@@ -44,7 +44,6 @@ export interface TelegramChannelConfig {
 export interface FeishuAccountConfig {
   appId?: string
   appSecret?: string
-  botName?: string
   enabled?: boolean
 }
 

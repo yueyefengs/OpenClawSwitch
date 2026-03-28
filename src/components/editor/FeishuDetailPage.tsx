@@ -249,18 +249,6 @@ export default function FeishuDetailPage({ config, onChange, onBack }: Props) {
                       </div>
                     </div>
 
-                    {/* Bot Name */}
-                    <div className="space-y-2">
-                      <Label className="text-xs">机器人名称（可选）</Label>
-                      <Input
-                        type="text"
-                        value={accounts[selectedAccountId].botName ?? ""}
-                        onChange={e => updateAccount(selectedAccountId, { botName: e.target.value })}
-                        placeholder="Primary bot"
-                        className="text-xs"
-                      />
-                    </div>
-
                     {/* Enabled toggle */}
                     <ToggleCard
                       checked={accounts[selectedAccountId].enabled ?? true}

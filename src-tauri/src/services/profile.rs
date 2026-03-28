@@ -32,6 +32,7 @@ pub struct Profile {
 fn sanitize_config(config: Value) -> Value {
     let mut config = config;
     sanitize_discord_accounts(&mut config);
+    sanitize_feishu_accounts(&mut config);
     sanitize_provider_configs(&mut config);
     sanitize_gateway_config(&mut config);
     config
@@ -58,6 +59,23 @@ fn sanitize_discord_accounts(config: &mut Value) {
 
         account_obj.remove("botName");
         account_obj.remove("botToken");
+    }
+}
+
+fn sanitize_feishu_accounts(config: &mut Value) {
+    let Some(accounts) = config
+        .pointer_mut("/channels/feishu/accounts")
+        .and_then(|value| value.as_object_mut())
+    else {
+        return;
+    };
+
+    for account in accounts.values_mut() {
+        let Some(account_obj) = account.as_object_mut() else {
+            continue;
+        };
+
+        account_obj.remove("botName");
     }
 }
 
